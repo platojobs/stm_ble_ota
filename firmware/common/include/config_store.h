@@ -1,0 +1,51 @@
+/**
+ * @file    config_store.h
+ * @brief   Persisted WiFi provisioning data (SSID / password / auto-connect).
+ *
+ * The record is stored in the two-page config store defined in
+ * flash_layout.h. Credentials are stored in plaintext in on-chip flash; this
+ * matches typical ESP32 provisioning behaviour but is not a secret vault.
+ */
+
+#ifndef CONFIG_STORE_H
+#define CONFIG_STORE_H
+
+#include "record_store.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#define WIFI_SSID_MAX     32u
+#define WIFI_PASSWORD_MAX 64u
+#define WIFI_CONFIG_MAGIC 0x57434647u /* "WCFG" */
+
+typedef struct {
+    char ssid[WIFI_SSID_MAX + 1u];
+    char password[WIFI_PASSWORD_MAX + 1u];
+    uint8_t auto_connect;
+    uint8_t provisioned;
+} wifi_config_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint8_t  ssid_len;
+    uint8_t  password_len;
+    uint8_t  auto_connect;
+    uint8_t  reserved;
+    char     ssid[WIFI_SSID_MAX];
+    char     password[WIFI_PASSWORD_MAX];
+} wifi_config_record_t;
+
+/** @return true when the in-memory config has a usable SSID. */
+bool wifi_config_valid(const wifi_config_t *config);
+
+/** Load from the store. Returns 0 on success, -1 when absent/corrupt. */
+int wifi_config_load(const record_store_t *store, wifi_config_t *out);
+
+/** Persist. Returns 0 on success. */
+int wifi_config_save(record_store_t *store, const wifi_config_t *config);
+
+/** Erase both config pages. Returns 0 on success. */
+int wifi_config_clear(record_store_t *store);
+
+#endif /* CONFIG_STORE_H */
