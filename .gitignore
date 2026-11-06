@@ -1,0 +1,27 @@
+# Build outputs
+build/
+build-*/
+out/
+*.o
+*.d
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local flash artifacts
+*.ota
+firmware/*.ota
+firmware/*.json
