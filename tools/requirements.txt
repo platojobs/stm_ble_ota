@@ -1,0 +1,6 @@
+# Host-side tools for the stm_ble_ota reference project.
+#
+# Only the serial path is required for the basic provisioning + OTA flow.
+pyserial>=3.5
+# Optional: BLE transport (--ble). Not needed for the USART2 test link.
+bleak>=0.21
