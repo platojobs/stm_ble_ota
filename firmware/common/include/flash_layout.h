@@ -13,10 +13,11 @@
  * Slot A lives entirely in bank 1, slot B entirely in bank 2. The application
  * executes from slot A while it erases/programs slot B, so the download path
  * uses the dual-bank read-while-write capability and is not stalled by flash
- * operations. The bootloader runs from bank 1 and copies slot B to slot A; that
- * copy routine executes from SRAM (see bootloader linker script, .ramfunc).
+ * operations. The bootloader runs from bank 1 and erases/programs slot A in the
+ * same bank, so its erase/program routines execute from SRAM (see the
+ * bootloader linker script, .ramfunc).
  *
- * Metadata and configuration use one 8 KB page each. They are stored as two
+ * Metadata and configuration each occupy two 8 KB pages, used as two
  * alternating records (one record per page) so a power loss can never destroy
  * the last known-good record.
  */
