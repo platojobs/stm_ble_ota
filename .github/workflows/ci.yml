@@ -49,7 +49,7 @@ jobs:
         run: cmake --build build/arm
       - name: Static analysis
         run: |
-          cppcheck --enable=warning,performance \
+          cppcheck --enable=warning,performance,portability \
             --error-exitcode=1 --inline-suppr \
             --suppress=missingIncludeSystem --suppress=missingInclude \
             --std=c11 \
@@ -58,7 +58,8 @@ jobs:
             -I firmware/bootloader/include \
             -I firmware/vendor/stm32c5xx_dfp/Include \
             -I firmware/vendor/cmsis/Include \
-            firmware/common/src firmware/app/src firmware/bootloader/src
+            firmware/common/src firmware/app/src firmware/bootloader/src \
+            tests
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
