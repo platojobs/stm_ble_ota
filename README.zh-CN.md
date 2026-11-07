@@ -311,9 +311,11 @@ python3 -m pip install -r tools/requirements.txt
 ```
 
 密钥管理：Ed25519 **公钥**编译进 bootloader
-（`firmware/common/include/ota_public_key.h`）。私钥从不提交到仓库；用
-`firmware_tool.py keygen` 在本地生成密钥对，重新编译 bootloader 以更新公钥，
-私钥保存在离线环境或 CI secret 中。
+（`firmware/common/include/ota_public_key.h`）。仓库内置的只是**参考/示例
+密钥**，仅用于跑通示例 OTA，绝不能用于任何真实设备。私钥从不提交到仓库：
+用 `firmware_tool.py keygen` 自己生成密钥对，替换公钥并重新编译 bootloader，
+私钥保存在离线环境或 CI secret 中。示例私钥
+`tools/keys/reference_ed25519_private.pem` 被 git 忽略，仅存在于本机。
 
 ```bash
 # 一次性生成签名密钥对（私钥留在本地/离线环境）

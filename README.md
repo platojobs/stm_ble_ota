@@ -330,9 +330,13 @@ python3 -m pip install -r tools/requirements.txt
 ```
 
 Key handling: the Ed25519 **public** key is compiled into the bootloader
-(`firmware/common/include/ota_public_key.h`). Private keys are never committed;
-generate a keypair locally with `keygen`, rebuild the bootloader with the new
-public key, and keep the private half offline or in the CI secret store.
+(`firmware/common/include/ota_public_key.h`). The committed public key is a
+**reference/example key** for the demo flow only — never use it on a real
+device. Private keys are never committed: generate your own keypair with
+`keygen`, replace the public key and rebuild the bootloader, then keep the
+private half offline or in the CI secret store. The example private key at
+`tools/keys/reference_ed25519_private.pem` is git-ignored and exists only on
+this machine.
 
 ```bash
 # one-time: generate a signing keypair (private stays local/offline)

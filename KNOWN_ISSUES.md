@@ -99,11 +99,13 @@ use an in-memory fake flash and do not model real flash timing.
   but the bootloader still accepts an image whose metadata carries no signature
   at all (the factory-programming path). Direct flash access bypasses every
   check; there is no secure-boot fuse, no encryption and no anti-rollback fuse.
-- The reference public key in `firmware/common/include/ota_public_key.h` has a
-  matching private key that is not in the repository. Replacing the key
-  requires rebuilding and re-flashing the bootloader; rotating a leaked key is
-  therefore a bootloader update, not an OTA of the application. Never reuse the
-  reference key for a production image.
+- The public key in `firmware/common/include/ota_public_key.h` belongs to a
+  **reference/example key pair** shipped with the project. It is not a secret
+  and must never be used for a real device or production image: anyone can sign
+  firmware accepted by the reference bootloader. Production requires generating
+  a fresh key pair, replacing the public key and rebuilding/re-flashing the
+  bootloader. Rotating a leaked key is therefore a bootloader update, not an
+  OTA of the application.
 - Downgrade protection is a simple version comparison (`version < previous` is
   rejected, equal is accepted), enforced in both the receiver and the
   bootloader. Erasing metadata through a debugger bypasses the check entirely.
