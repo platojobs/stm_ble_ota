@@ -206,7 +206,8 @@ firmware/
 cmake/         arm-none-eabi 工具链文件
 tests/         主机侧单元测试 + 假 Flash
 tools/         固件打包与配网/OTA 上位机脚本
-docs/          协议、ESP-AT 自定义服务、移植说明、错误码表
+docs/          协议、ESP-AT 自定义服务、移植说明、错误码表、
+               安全说明、版本策略
 ```
 
 ## 编译
@@ -366,6 +367,30 @@ python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --ver
 首次联调建议先用串口：它使用完全相同的 JSON 命令和二进制 OTA 帧，且不依赖
 协处理器。
 
+## 产线烧录与量产注意事项
+
+1. **先替换签名密钥。** 仓库内置的 Ed25519 公钥只是参考/示例密钥，任何用
+   配对私钥签出的镜像都会被该源码树构建的所有设备接受。量产前生成自己的
+   密钥对，只把公钥写进 `firmware/common/include/ota_public_key.h`，重新
+   编译并**重新烧录 bootloader**。这是产线步骤，不能通过 OTA 完成。详见
+   [docs/security.md](docs/security.md)。
+2. **烧录顺序：** 先 bootloader（`0x0800_0000`），再应用（`0x0800_8000`），
+   使用 `STM32CubeProgrammer` + SWD。不要预烧 Slot B，它只是下载目标；烧录
+   后回读并比对校验和。
+3. **设备身份：** 首次启动从 MCU UID 派生序列号（`C562-XXXXXXXXXXXX`），
+   写入 bank 2 页 48/49。`factory reset` 会刻意保留它；用 CLI `device` 读取
+   并记录到产线台账。
+4. **产测自检：** 执行 `selftest` 并要求 `"ok":true`。`failed_mask` 为位掩码：
+   0x01 Flash、0x02 I2C/SHT30、0x04 ADC、0x08 BLE 就绪。失败同时会以
+   `SELFTEST_FAILED` 记入 `log`。
+5. **OTA 门禁：** 现场升级必须使用生产密钥签名的 `.ota` 包；bootloader 会
+   拒绝无效签名并保留当前运行镜像。私钥保存在离线环境或 Release CI secret
+   （`OTA_SIGNING_KEY_B64`），不得进入仓库或设备。
+6. **访问保护：** 出货前建议开启读出保护并锁住调试口。调试/烧录接口会完全
+   绕过签名、防降级与恢复出厂检查；见 `KNOWN_ISSUES.md`。
+7. **凭据：** WiFi 配网信息在 Flash 中只是混淆，不是加密。不要在设备上部署
+   一旦被提取就会造成损害的统一生产凭据。
+
 ## 移植
 
 `firmware/common`、协议逻辑与滤波算法都是可移植的 C 代码。更换主控需要修改
@@ -379,9 +404,11 @@ BSP、Flash 驱动、链接脚本、启动文件和 `flash_layout.h`；
 profile、看门狗复位、回滚，以及两种传输方式下的 OTA。时钟仅支持 48 MHz；
 I2C 时序、ADC 精度和 Flash 时序均为理论推导，未实测。ESP-AT 需要重新构建
 自定义服务表，官方固件不包含 `0xFF00`。OTA 完整性使用 CRC-32 + SHA-256，
-真实性使用 Ed25519；没有加密，也没有防回滚熔丝。WiFi 密码以明文保存在参数
-页（明文存储的边界条件见 KNOWN_ISSUES）。bootloader 仅在元数据完全没有
-签名时接受未签名镜像（产线烧录路径）；OTA 下载始终要求有效签名。
+真实性使用 Ed25519；没有加密，也没有防回滚熔丝。WiFi 凭据不以明文保存：
+配置记录用由 MCU UID 派生的 SHA-256 密钥流做字节混淆，这属于混淆而非加密
+（强度边界见 [docs/security.md](docs/security.md) 与 KNOWN_ISSUES）。
+bootloader 仅在元数据完全没有签名时接受未签名镜像（产线烧录路径）；
+OTA 下载始终要求有效签名。
 
 完整清单见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
 

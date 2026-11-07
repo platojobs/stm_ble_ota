@@ -340,6 +340,24 @@ TEST_CASE(record_store_erase_failure_keeps_previous)
 
 /* --- config store -------------------------------------------------------- */
 
+static const uint8_t k_config_key[WIFI_CONFIG_KEY_BYTES] = {
+    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+    0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+    0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78,
+    0x87, 0x96, 0xA5, 0xB4, 0xC3, 0xD2, 0xE1, 0xF0,
+};
+
+static bool storage_contains(const char *needle)
+{
+    size_t length = strlen(needle);
+    for (size_t i = 0; i + length <= sizeof(g_storage); ++i) {
+        if (memcmp(g_storage + i, needle, length) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 TEST_CASE(config_store_roundtrip)
 {
     flash_setup();
@@ -354,17 +372,17 @@ TEST_CASE(config_store_roundtrip)
     config.auto_connect = 1u;
     config.provisioned = 1u;
 
-    ASSERT_EQ(wifi_config_save(&store, &config), 0);
+    ASSERT_EQ(wifi_config_save(&store, &config, k_config_key), 0);
 
     wifi_config_t loaded;
-    ASSERT_EQ(wifi_config_load(&store, &loaded), 0);
+    ASSERT_EQ(wifi_config_load(&store, &loaded, k_config_key), 0);
     ASSERT_STREQ(loaded.ssid, "stm-ble-ota");
     ASSERT_STREQ(loaded.password, "s3cret!pass");
     ASSERT_EQ(loaded.auto_connect, 1u);
     ASSERT_EQ(loaded.provisioned, 1u);
 
     ASSERT_EQ(wifi_config_clear(&store), 0);
-    ASSERT_EQ(wifi_config_load(&store, &loaded), -1);
+    ASSERT_EQ(wifi_config_load(&store, &loaded, k_config_key), -1);
 }
 
 TEST_CASE(config_store_rejects_empty)
@@ -377,7 +395,7 @@ TEST_CASE(config_store_rejects_empty)
     wifi_config_t config;
     memset(&config, 0, sizeof(config));
     ASSERT_FALSE(wifi_config_valid(&config));
-    ASSERT_EQ(wifi_config_save(&store, &config), -1);
+    ASSERT_EQ(wifi_config_save(&store, &config, k_config_key), -1);
 }
 
 TEST_CASE(config_store_corrupt_falls_back_to_unprovisioned)
@@ -392,7 +410,12 @@ TEST_CASE(config_store_corrupt_falls_back_to_unprovisioned)
     strcpy(config.ssid, "lab-network");
     strcpy(config.password, "hunter2");
     config.provisioned = 1u;
-    ASSERT_EQ(wifi_config_save(&store, &config), 0);
+    ASSERT_EQ(wifi_config_save(&store, &config, k_config_key), 0);
+
+    /* Neither SSID nor password is stored in plaintext. */
+    ASSERT_FALSE(storage_contains("lab-network"));
+    ASSERT_FALSE(storage_contains("hunter2"));
+    ASSERT_FALSE(storage_contains(config.password));
 
     record_info_t info;
     uint8_t buffer[512];
@@ -407,9 +430,33 @@ TEST_CASE(config_store_corrupt_falls_back_to_unprovisioned)
      * unprovisioned rather than exposing stale or partial credentials. */
     wifi_config_t loaded;
     memset(&loaded, 0, sizeof(loaded));
-    ASSERT_EQ(wifi_config_load(&store, &loaded), -1);
+    ASSERT_EQ(wifi_config_load(&store, &loaded, k_config_key), -1);
     ASSERT_FALSE(wifi_config_valid(&loaded));
     ASSERT_EQ(loaded.ssid[0], '\0');
+}
+
+TEST_CASE(config_store_wrong_key_is_rejected)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_CONFIG_PAGE0, FLASH_CONFIG_PAGE1, 128u), 0);
+
+    wifi_config_t config;
+    memset(&config, 0, sizeof(config));
+    strcpy(config.ssid, "lab-network");
+    strcpy(config.password, "hunter2");
+    config.provisioned = 1u;
+    ASSERT_EQ(wifi_config_save(&store, &config, k_config_key), 0);
+
+    uint8_t wrong_key[WIFI_CONFIG_KEY_BYTES];
+    memcpy(wrong_key, k_config_key, sizeof(wrong_key));
+    wrong_key[0] ^= 0x80u;
+
+    wifi_config_t loaded;
+    memset(&loaded, 0, sizeof(loaded));
+    ASSERT_EQ(wifi_config_load(&store, &loaded, wrong_key), -1);
+    ASSERT_FALSE(wifi_config_valid(&loaded));
 }
 
 TEST_CASE(wifi_credentials_validate_lengths_and_chars)
@@ -1156,6 +1203,7 @@ void run_ota_logic_tests(void)
     RUN_TEST(config_store_roundtrip);
     RUN_TEST(config_store_rejects_empty);
     RUN_TEST(config_store_corrupt_falls_back_to_unprovisioned);
+    RUN_TEST(config_store_wrong_key_is_rejected);
     RUN_TEST(wifi_credentials_validate_lengths_and_chars);
     RUN_TEST(device_info_serial_from_uid);
     RUN_TEST(device_info_validation_and_roundtrip);

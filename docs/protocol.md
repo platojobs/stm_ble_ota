@@ -405,10 +405,14 @@ OTA metadata payload (`ota_metadata_t`, 528 bytes, fields `u32` unless noted):
 | chunk_crc32[12] | CRC of each verified 8 KB chunk |
 | reserved | zero |
 
-WiFi record payload (`wifi_config_record_t`): `magic` "WCFG", `ssid_len`,
-`password_len`, `auto_connect`, `reserved`, 32-byte SSID, 64-byte password.
-Credentials are stored in plaintext on-chip flash, as is typical for ESP32
-provisioning; this is not a secret vault.
+WiFi record payload (`wifi_config_record_t`, version 2): `magic` "WCFG",
+`version`, `ssid_len`, `password_len`, `auto_connect`, `reserved[3]`, then a
+32-byte SSID and a 64-byte password field. Both fields hold ciphertext: the
+SSID and password are XORed with a SHA-256 keystream keyed by
+`SHA-256(MCU UID || "stm-ble-ota/wifi/v2")`, so the plaintext never reaches
+flash. This is obfuscation, not encryption: the UID is readable from the same
+device, and a record written with a different key is rejected at load. See
+[docs/security.md](security.md) for the strength boundary.
 
 ## 6. Timing constants
 

@@ -13,6 +13,7 @@
 #include "bsp_time.h"
 #include "flash_layout.h"
 #include "fault_service.h"
+#include "device_service.h"
 #include "app_config.h"
 
 #include <stdio.h>
@@ -24,6 +25,7 @@
 static esp_at_t *g_at;
 static record_store_t g_store;
 static wifi_config_t g_config;
+static uint8_t g_storage_key[WIFI_CONFIG_KEY_BYTES];
 static bool g_connected;
 static bool g_esp_ready;
 static uint32_t g_last_attempt_ms;
@@ -178,7 +180,8 @@ int wifi_service_init(esp_at_t *at)
         return -1;
     }
 
-    (void)wifi_config_load(&g_store, &g_config);
+    device_service_storage_key(g_storage_key);
+    (void)wifi_config_load(&g_store, &g_config, g_storage_key);
 
     if (esp_wait_ready() != 0) {
         fault_service_raise(ERR_CODE_AT_TIMEOUT, ESP_BOOT_ATTEMPTS);
@@ -237,7 +240,7 @@ static int handle_set(const char *json)
     next.auto_connect = 1u;
     next.provisioned = 1u;
 
-    if (wifi_config_save(&g_store, &next) != 0) {
+    if (wifi_config_save(&g_store, &next, g_storage_key) != 0) {
         fault_service_raise(ERR_CODE_FLASH_PROGRAM, 0u);
         reply_error("could not persist credentials");
         return -1;

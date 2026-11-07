@@ -3,6 +3,63 @@
 All notable changes to this project are documented here. Dates are the actual
 development dates; versions follow semantic versioning.
 
+## [0.3.0] - 2026-11-07
+
+Not validated on hardware; see `KNOWN_ISSUES.md`.
+
+### Added
+
+- **CI**: GitHub Actions runs the host tests and the ARM build with `-Werror`,
+  runs `cppcheck` (`warning,performance,portability` over firmware and tests),
+  uploads firmware artefacts and, for `v*` tags, builds a signed `.ota` with
+  `OTA_SIGNING_KEY_B64` and publishes a GitHub Release with `SHA256SUMS`.
+- **Version injection**: CMake derives `FW_VERSION`/`FW_BUILD_ID` from
+  `git describe` and `tools/build.sh` wraps configure, build, packaging and
+  checksums; `-DFW_VERSION=1.2.3 -DFW_BUILD_ID=42` overrides both.
+- **Unified error codes**: 16-bit grouped codes (`0x01xx` arguments, `0x02xx`
+  flash, `0x03xx` OTA, `0x04xx` image, `0x05xx` network, `0x06xx` sensors,
+  `0x07xx` system) with `err_code_from_ota_reason`, `err_code_from_image_result`,
+  `err_code_name` and `err_code_domain_name`; full table in
+  `docs/error_codes.md`.
+- **Fault log**: 8-entry RAM ring buffer with timestamp, code and detail,
+  raised from OTA, WiFi and sensor failures (sensor failures are recorded once
+  per episode). Readable as JSON through the CLI `log` command and as
+  `fault_count`/`last_err`/`last_err_name` in `info`.
+- **Device identity**: serial derived from the 96-bit MCU UID
+  (`C562-XXXXXXXXXXXX`), hardware id and provisioning flag persisted in two
+  alternating records in bank 2 pages 48/49, so identity survives factory
+  reset. CLI `device`; `info` reports `serial` and `provisioned`.
+- **Production self-test**: CLI `selftest` checks flash read-back, I2C/SHT30,
+  ADC and BLE readiness, returns a bitmask and raises `SELFTEST_FAILED`.
+
+### Changed
+
+- **WiFi credentials at rest**: config record version 2 stores the SSID and
+  password as ciphertext XORed with a SHA-256 keystream keyed by
+  `SHA-256(MCU UID || "stm-ble-ota/wifi/v2")`. Loading with the wrong key
+  fails and clears the output. This is obfuscation, not encryption; see
+  `docs/security.md`.
+- **Input bounds**: SSID 1..32 and password 0..64 printable ASCII bytes, `"`
+  and `\` rejected before an AT command or a flash write; overlong USART2
+  lines are discarded whole and reported as `LINE_TOO_LONG`; OTA BEGIN/END
+  payload length mismatches are reported as `MALFORMED_FRAME`.
+- **Documentation**: `SECURITY.md`, `CONTRIBUTING.md`, `docs/security.md`,
+  `docs/versioning.md`, issue and pull-request templates, and a production
+  flashing / mass-production section in both READMEs.
+
+### Fixed
+
+- Flash layout documentation now reserves `0x0806_4000` .. `0x0807_FFFF`
+  (96 KB) after the device-info pages, matching `flash_layout.h`.
+
+### Notes
+
+- The Ed25519 key pair in the repository is a **reference/example pair** and
+  must not be used for any real device. Production requires generating a new
+  pair, replacing `ota_public_key.h` and rebuilding the bootloader; this is a
+  bootloader update, not an OTA of the application.
+- Host tests: 1,581 assertions.
+
 ## [0.2.0] - 2026-11-07
 
 Not validated on hardware; see `KNOWN_ISSUES.md`.

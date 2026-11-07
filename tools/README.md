@@ -18,9 +18,17 @@ python3 -m pip install -r tools/requirements.txt
 
 `firmware_tool.py` computes the same CRC-32/IEEE as the firmware, checks that
 the image's initial SP and reset vector are plausible for slot A
-(`0x0800_8000`), and signs the manifest with Ed25519. The public key compiled
-into the bootloader is a **reference/example key** and must be replaced for any
-real device; the private key is never stored in the repository.
+(`0x0800_8000`), and signs the manifest with Ed25519.
+
+The public key compiled into the bootloader
+(`firmware/common/include/ota_public_key.h`) is a **reference/example key**
+shipped with the repository. It is not a secret — the matching private key is
+not in the tree — but it is **not for production**: anyone with the reference
+private key can sign an image the reference bootloader accepts. Before shipping
+a real device, generate a fresh key pair, replace the compiled-in public key,
+rebuild and re-flash the bootloader, and keep the private key offline or in a
+CI secret. Rotation and incident handling are described in
+`../docs/security.md`.
 
 ```bash
 # generate a local keypair (tools/keys/ is git-ignored)
@@ -31,7 +39,7 @@ python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
 
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
     --version 0.2.0 --hw 0x0050 --build-id 2 \
-    --key tools/keys/reference_ed25519_private.pem -o build/app-0.2.0.ota
+    --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
 ```

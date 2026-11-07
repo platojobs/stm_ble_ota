@@ -6,12 +6,14 @@
 #include "flash_layout.h"
 #include "app_config.h"
 #include "fault_service.h"
+#include "sha256.h"
 #include "stm32c562xx.h"
 
 #include <string.h>
 
 static record_store_t g_store;
 static device_info_t g_info;
+static uint8_t g_uid[12];
 static bool g_ready;
 
 static int dev_erase(void *context, uint32_t address)
@@ -44,6 +46,9 @@ void device_service_init(void)
     g_ready = false;
     device_info_defaults(&g_info, APP_HARDWARE_ID);
 
+    const uint8_t *uid = (const uint8_t *)(uintptr_t)UID_BASE;
+    memcpy(g_uid, uid, sizeof(g_uid));
+
     if (record_store_init(&g_store, &iface, FLASH_DEVICE_PAGE0, FLASH_DEVICE_PAGE1,
                           (uint16_t)sizeof(device_info_record_t)) == 0) {
         if (device_info_load(&g_store, &g_info) == 0) {
@@ -53,9 +58,8 @@ void device_service_init(void)
     }
 
     /* First boot or lost record: derive a stable serial from the MCU UID. */
-    const uint8_t *uid = (const uint8_t *)(uintptr_t)UID_BASE;
     device_info_defaults(&g_info, APP_HARDWARE_ID);
-    device_info_build_serial(uid, g_info.serial);
+    device_info_build_serial(g_uid, g_info.serial);
     g_info.provisioned = true;
 
     if (!device_info_valid(&g_info)) {
@@ -77,4 +81,17 @@ const device_info_t *device_service_info(void)
 bool device_service_ready(void)
 {
     return g_ready;
+}
+
+void device_service_storage_key(uint8_t out[32])
+{
+    static const char label[] = "stm-ble-ota/wifi/v2";
+    uint8_t material[sizeof(g_uid) + sizeof(label) - 1u];
+
+    if (out == NULL) {
+        return;
+    }
+    memcpy(material, g_uid, sizeof(g_uid));
+    memcpy(material + sizeof(g_uid), label, sizeof(label) - 1u);
+    sha256(material, (uint32_t)sizeof(material), out);
 }

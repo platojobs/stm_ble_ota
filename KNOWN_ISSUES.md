@@ -26,7 +26,7 @@ no board available while it was written.
 | Device serial derived from the MCU UID and persisted | formatting/round-trip tested on host; UID register read **not verified on hardware** |
 | Production self-test (`selftest`: flash/I2C/ADC/BLE) | decision logic implemented; **not executed on hardware** |
 
-Host-side logic tests (1,574 assertions) cover CRC, frame parsing/resync,
+Host-side logic tests (1,581 assertions) cover CRC, frame parsing/resync,
 record store torn-write recovery, image validation (size, vectors, CRC,
 SHA-256, Ed25519), OTA state machine and resume/truncation, install/copy
 decisions, signature failure, downgrade rejection, CLI parsing, rollback
@@ -113,10 +113,14 @@ flash timing.
 - Downgrade protection is a simple version comparison (`version < previous` is
   rejected, equal is accepted), enforced in both the receiver and the
   bootloader. Erasing metadata through a debugger bypasses the check entirely.
-- WiFi credentials are stored in plaintext (SSID/password) in the config
-  record. The threat model is "attacker with physical access to the
-  flash/debug port"; there is no secure element and no key derived from a
-  device-unique secret. Do not reuse sensitive credentials.
+- WiFi credentials are not stored in plaintext: the config record (version 2)
+  keeps SSID and password as ciphertext, XORed with a SHA-256 keystream keyed
+  by `SHA-256(MCU UID || "stm-ble-ota/wifi/v2")`. This is **obfuscation, not
+  encryption**. The UID is readable by anyone with flash/debug access, so an
+  attacker who can dump the flash can also derive the key. There is no secure
+  element, no per-device secret fused at production and no authentication of
+  the record beyond its CRC. Treat the chip as untrusted storage and do not
+  reuse sensitive credentials.
 - The USART2 PC link shares the ST-LINK virtual COM port. Whether the
   NUCLEO-C562RE solder bridges route the VCP to PA2/PA3 by default is
   **not verified**; check the board user manual before wiring.

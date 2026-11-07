@@ -220,7 +220,8 @@ firmware/
 cmake/         arm-none-eabi toolchain file
 tests/         host unit tests + fake flash
 tools/         firmware packer and provisioning/OTA host script
-docs/          protocol, ESP-AT custom service, porting, error codes
+docs/          protocol, ESP-AT custom service, porting, error codes,
+               security, versioning
 ```
 
 ## Build
@@ -387,6 +388,36 @@ python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --ver
 Serial is the recommended first bring-up path: it uses the same JSON commands
 and the same binary OTA frames, with no dependence on the co-processor.
 
+## Production flashing and mass production
+
+1. **Replace the signing key first.** The committed Ed25519 public key is a
+   reference/example key; anything signed with the matching private key would
+   be accepted by every device built from this tree. Generate a production
+   keypair, put only the public key into
+   `firmware/common/include/ota_public_key.h`, rebuild **and re-flash the
+   bootloader** on every device. This is a factory step, not an OTA update.
+   See [docs/security.md](docs/security.md).
+2. **Flash order:** bootloader at `0x0800_0000`, then the application at
+   `0x0800_8000` (`STM32CubeProgrammer`, SWD). Do not pre-fill slot B; it is a
+   download target only. Read the images back and compare checksums.
+3. **Identity:** the first boot derives the serial from the MCU UID
+   (`C562-XXXXXXXXXXXX`) and stores it in bank 2 pages 48/49. `factory reset`
+   deliberately keeps it; read it with the CLI `device` command and record it
+   in the production log.
+4. **Self-test:** run `selftest` and require `"ok":true`. `failed_mask` is a
+   bitmask: 0x01 flash, 0x02 I2C/SHT30, 0x04 ADC, 0x08 BLE readiness. A
+   failure also appears in `log` as `SELFTEST_FAILED`.
+5. **OTA gate:** every field update must be an `.ota` package signed with the
+   production key; the bootloader rejects an invalid signature and keeps the
+   running image. Keep the private key offline or in the release CI secret
+   (`OTA_SIGNING_KEY_B64`); never in the repository or on a device.
+6. **Access protection:** consider read-out protection and a locked debug
+   port before shipping. Debug/flash access bypasses signature, downgrade and
+   factory-reset checks entirely; see `KNOWN_ISSUES.md`.
+7. **Credentials:** WiFi provisioning is obfuscated at rest, not encrypted.
+   Do not deploy shared production credentials that would be damaging if
+   extracted from a device.
+
 ## Porting
 
 `firmware/common`, the protocol logic and the sensor filter are portable C.
@@ -403,8 +434,10 @@ BLE profile, watchdog reset, rollback and OTA over both transports. Clock is
 measured. ESP-AT needs a custom service table rebuild; stock firmware does not
 expose `0xFF00`. OTA integrity uses CRC-32 + SHA-256 and authenticity uses
 Ed25519; there is no encryption and no anti-rollback fuse. WiFi credentials are
-stored in plaintext in the parameter pages (see KNOWN_ISSUES for the boundary
-of that assumption). The bootloader accepts an unsigned image only if the
+not stored in plaintext: the config record keeps them as SHA-256-keystream
+ciphertext keyed from the MCU UID, which is obfuscation rather than encryption
+(see [docs/security.md](docs/security.md) and KNOWN_ISSUES for the boundary).
+The bootloader accepts an unsigned image only if the
 metadata carries no signature at all (factory provisioning path); OTA downloads
 always require a valid signature.
 
