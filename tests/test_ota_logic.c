@@ -411,6 +411,39 @@ TEST_CASE(config_store_corrupt_falls_back_to_unprovisioned)
     ASSERT_EQ(loaded.ssid[0], '\0');
 }
 
+TEST_CASE(wifi_credentials_validate_lengths_and_chars)
+{
+    char ssid[WIFI_SSID_MAX + 2u];
+    char password[WIFI_PASSWORD_MAX + 2u];
+
+    ASSERT_TRUE(wifi_credentials_valid("lab-network", "hunter2"));
+    ASSERT_TRUE(wifi_credentials_valid("lab-network", ""));
+    ASSERT_FALSE(wifi_credentials_valid("", "hunter2"));
+    ASSERT_FALSE(wifi_credentials_valid(NULL, "hunter2"));
+    ASSERT_FALSE(wifi_credentials_valid("lab", NULL));
+
+    memset(ssid, 'a', sizeof(ssid));
+    ssid[WIFI_SSID_MAX] = '\0';
+    ASSERT_TRUE(wifi_credentials_valid(ssid, "p"));
+    ssid[WIFI_SSID_MAX] = 'a';
+    ssid[WIFI_SSID_MAX + 1u] = '\0';
+    ASSERT_FALSE(wifi_credentials_valid(ssid, "p"));
+
+    memset(password, 'b', sizeof(password));
+    password[WIFI_PASSWORD_MAX] = '\0';
+    ASSERT_TRUE(wifi_credentials_valid("lab", password));
+    password[WIFI_PASSWORD_MAX] = 'b';
+    password[WIFI_PASSWORD_MAX + 1u] = '\0';
+    ASSERT_FALSE(wifi_credentials_valid("lab", password));
+
+    /* Characters that would break AT+CWJAP quoting or inject CR/LF. */
+    ASSERT_FALSE(wifi_credentials_valid("ca\"t", "pass"));
+    ASSERT_FALSE(wifi_credentials_valid("lab", "pa\\ss"));
+    ASSERT_FALSE(wifi_credentials_valid("lab", "pa\nss"));
+    ASSERT_FALSE(wifi_credentials_valid("lab", "p\x01ss"));
+    ASSERT_TRUE(wifi_credentials_valid("lab 2.4G", "p@ss!#$%&'()*+,-./"));
+}
+
 /* --- metadata ------------------------------------------------------------ */
 
 TEST_CASE(ota_metadata_roundtrip)
@@ -1048,6 +1081,7 @@ void run_ota_logic_tests(void)
     RUN_TEST(config_store_roundtrip);
     RUN_TEST(config_store_rejects_empty);
     RUN_TEST(config_store_corrupt_falls_back_to_unprovisioned);
+    RUN_TEST(wifi_credentials_validate_lengths_and_chars);
     RUN_TEST(ota_metadata_roundtrip);
     RUN_TEST(ota_metadata_corrupt_falls_back_to_defaults);
     RUN_TEST(image_validate_accepts_good_image);

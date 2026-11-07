@@ -47,9 +47,10 @@ Host to device:
 | wifi.clear | `{"cmd":"wifi.clear"}` | `AT+CWQAP`, erases the config record |
 | wifi.status | `{"cmd":"wifi.status"}` | reports SSID, IP and provisioning state |
 
-`password` and `pass` are both accepted. SSID and password are rejected when
-they contain `"`, `CR` or `LF`, because they are interpolated into
-`AT+CWJAP="ssid","pass"`.
+`password` and `pass` are both accepted. Credentials are validated before they
+reach flash or the AT parser: SSID is 1–32 bytes, password is 0–64 bytes, both
+must be printable ASCII, and `"`, `\`, `CR`, `LF` and other control characters
+are rejected (they would break `AT+CWJAP="ssid","pass"`).
 
 Device to host:
 

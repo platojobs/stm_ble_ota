@@ -108,6 +108,7 @@ static void handle_frame(const stm_frame_t *frame, void *context)
         break;
     case STM_FRAME_OTA_BEGIN: {
         if (frame->payload_len != sizeof(ota_begin_payload_t)) {
+            fault_service_raise(ERR_CODE_MALFORMED_FRAME, frame->payload_len);
             send_progress(OTA_STATE_ERROR, OTA_REASON_BAD_SIZE, 0u, 0u, 0u);
             return;
         }
@@ -135,6 +136,7 @@ static void handle_frame(const stm_frame_t *frame, void *context)
     }
     case STM_FRAME_OTA_END: {
         if (frame->payload_len != sizeof(ota_end_payload_t)) {
+            fault_service_raise(ERR_CODE_MALFORMED_FRAME, frame->payload_len);
             send_progress(OTA_STATE_ERROR, OTA_REASON_BAD_SIZE, 0u, 0u, 0u);
             return;
         }

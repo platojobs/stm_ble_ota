@@ -42,6 +42,13 @@ typedef struct __attribute__((packed)) {
 /** @return true when the in-memory config has a usable SSID. */
 bool wifi_config_valid(const wifi_config_t *config);
 
+/**
+ * Validate externally supplied credentials before they reach flash or an
+ * AT command: SSID 1..32 bytes, password 0..64 bytes, printable ASCII only,
+ * and no '"' or '\\' (ESP-AT has no quoting for those inside CWJAP).
+ */
+bool wifi_credentials_valid(const char *ssid, const char *password);
+
 /** Load from the store. Returns 0 on success, -1 when absent/corrupt. */
 int wifi_config_load(const record_store_t *store, wifi_config_t *out);
 

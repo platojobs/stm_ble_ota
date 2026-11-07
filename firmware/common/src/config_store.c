@@ -5,12 +5,34 @@
 
 #include <string.h>
 
+static bool credential_bytes_ok(const char *value, size_t max_len)
+{
+    size_t len = strlen(value);
+    if (len > max_len) {
+        return false;
+    }
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = (unsigned char)value[i];
+        if (c < 0x20u || c > 0x7Eu || c == '"' || c == '\\') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool wifi_credentials_valid(const char *ssid, const char *password)
+{
+    if (ssid == NULL || password == NULL) {
+        return false;
+    }
+    return ssid[0] != '\0' &&
+           credential_bytes_ok(ssid, WIFI_SSID_MAX) &&
+           credential_bytes_ok(password, WIFI_PASSWORD_MAX);
+}
+
 bool wifi_config_valid(const wifi_config_t *config)
 {
     if (config == NULL) {
-        return false;
-    }
-    if (config->ssid[0] == '\0') {
         return false;
     }
     /* Defensive: strings must be NUL-terminated inside their arrays. */
@@ -20,7 +42,7 @@ bool wifi_config_valid(const wifi_config_t *config)
     if (memchr(config->password, '\0', sizeof(config->password)) == NULL) {
         return false;
     }
-    return true;
+    return wifi_credentials_valid(config->ssid, config->password);
 }
 
 int wifi_config_load(const record_store_t *store, wifi_config_t *out)

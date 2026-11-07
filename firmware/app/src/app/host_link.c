@@ -8,6 +8,7 @@
 
 #include "host_link.h"
 #include "bsp_uart.h"
+#include "fault_service.h"
 #include "ota_protocol.h"
 
 #include <string.h>
@@ -22,6 +23,7 @@ static void *g_context;
 static stm_frame_parser_t g_parser;
 static char g_line[HOST_LINE_MAX];
 static uint16_t g_line_len;
+static bool g_line_overflow;
 
 static bool g_in_frame;
 static bool g_have_sync;
@@ -47,6 +49,7 @@ void host_link_init(host_json_cb_t json_cb, host_frame_cb_t frame_cb,
     g_frame_cb = frame_cb;
     g_context = context;
     g_line_len = 0u;
+    g_line_overflow = false;
     g_in_frame = false;
     g_have_sync = false;
     g_frame_bytes = 0u;
@@ -103,13 +106,23 @@ void host_link_poll(void)
             continue;
         }
         if (byte == '\n') {
-            dispatch_line();
+            if (g_line_overflow) {
+                /* Drop the whole oversized line, including its tail. */
+                g_line_overflow = false;
+                g_line_len = 0u;
+            } else {
+                dispatch_line();
+            }
             continue;
         }
-        if (g_line_len + 1u < HOST_LINE_MAX) {
-            g_line[g_line_len++] = (char)byte;
-        } else {
-            g_line_len = 0u; /* oversized line discarded */
+        if (!g_line_overflow) {
+            if (g_line_len + 1u < HOST_LINE_MAX) {
+                g_line[g_line_len++] = (char)byte;
+            } else {
+                g_line_len = 0u;
+                g_line_overflow = true;
+                fault_service_raise(ERR_CODE_LINE_TOO_LONG, HOST_LINE_MAX);
+            }
         }
     }
 }

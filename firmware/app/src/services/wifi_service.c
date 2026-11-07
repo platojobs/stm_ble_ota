@@ -218,6 +218,11 @@ static int handle_set(const char *json)
         reply_error("missing password");
         return -1;
     }
+    if (!wifi_credentials_valid(ssid, password)) {
+        fault_service_raise(ERR_CODE_INVALID_ARG, 2u);
+        reply_error("ssid/password length or characters rejected");
+        return -1;
+    }
 
     if (connect_wifi(ssid, password) != 0) {
         fault_service_raise(ERR_CODE_WIFI_CONNECT_FAILED, 0u);
