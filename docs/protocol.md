@@ -366,7 +366,12 @@ offset  size  field
 
 Writing erases the page that does not hold the newest valid record, so a torn
 write cannot destroy the last known-good copy. `record_store_load` picks the
-valid record with the highest sequence.
+valid record with the highest sequence. If both pages fail their magic,
+length or CRC check (for example after a first-ever torn write), the load
+returns `-1` and the caller falls back to safe defaults: `ota_metadata_default`
+for the bootloader/OTA state and an unprovisioned (empty) WiFi config. The
+host tests cover torn writes, erase faults, corrupting the newest record and
+the both-pages-invalid fallback.
 
 OTA metadata payload (`ota_metadata_t`, 528 bytes, fields `u32` unless noted):
 

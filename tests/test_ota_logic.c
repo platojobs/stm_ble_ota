@@ -264,6 +264,79 @@ TEST_CASE(record_store_clear_pages)
     ASSERT_EQ(record_store_load(&store, loaded, sizeof(loaded), NULL), -1);
 }
 
+TEST_CASE(record_store_corrupt_newest_falls_back_to_older)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1, 128u), 0);
+
+    uint8_t older[32];
+    uint8_t newer[32];
+    memset(older, 0x11, sizeof(older));
+    memset(newer, 0x22, sizeof(newer));
+
+    ASSERT_EQ(record_store_save(&store, older, sizeof(older), NULL), 0);
+    ASSERT_EQ(record_store_save(&store, newer, sizeof(newer), NULL), 0);
+
+    record_info_t info;
+    uint8_t loaded[32];
+    ASSERT_EQ(record_store_load(&store, loaded, sizeof(loaded), &info), 0);
+    ASSERT_EQ(info.sequence, 2u);
+    ASSERT_EQ(loaded[0], 0x22u);
+
+    /* Damage the payload CRC of the newest record only. */
+    uint8_t zero = 0x00u;
+    ASSERT_EQ(fake_flash_program(&g_flash, info.page + RECORD_HEADER_LEN,
+                                 &zero, 1u), 0);
+    ASSERT_EQ(record_store_load(&store, loaded, sizeof(loaded), &info), 0);
+    ASSERT_EQ(info.sequence, 1u);
+    ASSERT_EQ(loaded[0], 0x11u);
+}
+
+TEST_CASE(record_store_torn_first_save_leaves_no_record)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1, 128u), 0);
+
+    uint8_t payload[64];
+    memset(payload, 0x5A, sizeof(payload));
+
+    /* Header lands, payload write tears: neither page has a valid record. */
+    g_flash.fail_program_after = 16u;
+    ASSERT_EQ(record_store_save(&store, payload, sizeof(payload), NULL), -1);
+    g_flash.fail_program_after = -1;
+
+    uint8_t loaded[64];
+    ASSERT_EQ(record_store_load(&store, loaded, sizeof(loaded), NULL), -1);
+}
+
+TEST_CASE(record_store_erase_failure_keeps_previous)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1, 128u), 0);
+
+    uint8_t payload[16];
+    memset(payload, 0x77, sizeof(payload));
+    ASSERT_EQ(record_store_save(&store, payload, sizeof(payload), NULL), 0);
+
+    /* Erase fault on the second save must not destroy the first record. */
+    g_flash.fail_erase_after = 0;
+    payload[0] = 0x88u;
+    ASSERT_EQ(record_store_save(&store, payload, sizeof(payload), NULL), -1);
+    g_flash.fail_erase_after = -1;
+
+    uint8_t loaded[16];
+    record_info_t info;
+    ASSERT_EQ(record_store_load(&store, loaded, sizeof(loaded), &info), 0);
+    ASSERT_EQ(info.sequence, 1u);
+    ASSERT_EQ(loaded[0], 0x77u);
+}
+
 /* --- config store -------------------------------------------------------- */
 
 TEST_CASE(config_store_roundtrip)
@@ -306,6 +379,38 @@ TEST_CASE(config_store_rejects_empty)
     ASSERT_EQ(wifi_config_save(&store, &config), -1);
 }
 
+TEST_CASE(config_store_corrupt_falls_back_to_unprovisioned)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_CONFIG_PAGE0, FLASH_CONFIG_PAGE1, 128u), 0);
+
+    wifi_config_t config;
+    memset(&config, 0, sizeof(config));
+    strcpy(config.ssid, "lab-network");
+    strcpy(config.password, "hunter2");
+    config.provisioned = 1u;
+    ASSERT_EQ(wifi_config_save(&store, &config), 0);
+
+    record_info_t info;
+    uint8_t buffer[512];
+    ASSERT_EQ(record_store_load(&store, buffer, sizeof(buffer), &info), 0);
+
+    uint8_t byte = 0u;
+    ASSERT_EQ(fake_flash_read(&g_flash, info.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+    byte = (uint8_t)(byte ^ 0xFFu);
+    ASSERT_EQ(fake_flash_program(&g_flash, info.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+
+    /* The service starts from a zeroed struct; a failed load must leave it
+     * unprovisioned rather than exposing stale or partial credentials. */
+    wifi_config_t loaded;
+    memset(&loaded, 0, sizeof(loaded));
+    ASSERT_EQ(wifi_config_load(&store, &loaded), -1);
+    ASSERT_FALSE(wifi_config_valid(&loaded));
+    ASSERT_EQ(loaded.ssid[0], '\0');
+}
+
 /* --- metadata ------------------------------------------------------------ */
 
 TEST_CASE(ota_metadata_roundtrip)
@@ -334,6 +439,43 @@ TEST_CASE(ota_metadata_roundtrip)
 
     meta.state = 99u;
     ASSERT_EQ(ota_metadata_write(&store, &meta), -1);
+}
+
+TEST_CASE(ota_metadata_corrupt_falls_back_to_defaults)
+{
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1,
+                                (uint16_t)sizeof(ota_metadata_t)), 0);
+
+    ota_metadata_t meta;
+    ota_metadata_default(&meta);
+    meta.state = OTA_STATE_READY_TO_BOOT;
+    meta.image_size = 8192u;
+    ASSERT_EQ(ota_metadata_write(&store, &meta), 0);
+
+    record_info_t info;
+    uint8_t buffer[512];
+    ASSERT_EQ(record_store_load(&store, buffer, sizeof(buffer), &info), 0);
+
+    /* Flip the first payload byte so the record CRC no longer matches. */
+    uint8_t byte = 0u;
+    ASSERT_EQ(fake_flash_read(&g_flash, info.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+    byte = (uint8_t)(byte ^ 0xFFu);
+    ASSERT_EQ(fake_flash_program(&g_flash, info.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+
+    ota_metadata_t loaded;
+    bool found = true;
+    ota_metadata_load_or_default(&store, &loaded, &found);
+    ASSERT_FALSE(found);
+
+    ota_metadata_t defaults;
+    ota_metadata_default(&defaults);
+    ASSERT_EQ(loaded.magic, defaults.magic);
+    ASSERT_EQ(loaded.layout_version, defaults.layout_version);
+    ASSERT_EQ(loaded.state, defaults.state);
+    ASSERT_EQ(loaded.install_attempts, defaults.install_attempts);
 }
 
 /* --- image validation ---------------------------------------------------- */
@@ -899,10 +1041,15 @@ void run_ota_logic_tests(void)
 {
     RUN_TEST(record_store_roundtrip);
     RUN_TEST(record_store_torn_write_keeps_previous);
+    RUN_TEST(record_store_corrupt_newest_falls_back_to_older);
+    RUN_TEST(record_store_torn_first_save_leaves_no_record);
+    RUN_TEST(record_store_erase_failure_keeps_previous);
     RUN_TEST(record_store_clear_pages);
     RUN_TEST(config_store_roundtrip);
     RUN_TEST(config_store_rejects_empty);
+    RUN_TEST(config_store_corrupt_falls_back_to_unprovisioned);
     RUN_TEST(ota_metadata_roundtrip);
+    RUN_TEST(ota_metadata_corrupt_falls_back_to_defaults);
     RUN_TEST(image_validate_accepts_good_image);
     RUN_TEST(image_validate_rejects_corrupt_image);
     RUN_TEST(image_validate_rejects_bad_size);
