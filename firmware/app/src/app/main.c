@@ -234,10 +234,12 @@ int main(void)
     host_link_init(on_host_json, on_host_frame, NULL);
     g_led_last_ms = bsp_time_ms();
 
-    /* Bootloader-started IWDG is already running; re-arm it and clear the
-     * boot-attempt counter now that all services are initialised. */
+    /* Bootloader-started IWDG is already running; re-arm it. The boot is only
+     * confirmed after a grace period, so a reset loop caused by an early
+     * crash or hang still reaches the bootloader's rollback threshold. */
     bsp_watchdog_init();
-    ota_service_confirm_boot();
+    uint32_t boot_grace_start = bsp_time_ms();
+    bool boot_confirmed = false;
 
     for (;;) {
         bsp_watchdog_feed();
@@ -245,6 +247,10 @@ int main(void)
         esp_at_poll(&g_esp);
 
         uint32_t now = bsp_time_ms();
+        if (!boot_confirmed && (now - boot_grace_start) >= 3000u) {
+            boot_confirmed = true;
+            ota_service_confirm_boot();
+        }
         wifi_service_tick(now);
         sensor_service_tick(now);
         ota_service_tick(now);

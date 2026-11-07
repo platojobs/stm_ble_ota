@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import struct
 import sys
 import zlib
@@ -214,7 +215,13 @@ def cmd_pack(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
 
-    key = load_private_key(args.key)
+    key_path = (Path(os.environ["OTA_SIGNING_KEY"])
+                if "OTA_SIGNING_KEY" in os.environ else args.key)
+    if key_path is None:
+        print("error: --key or OTA_SIGNING_KEY is required to sign packages",
+              file=sys.stderr)
+        return 1
+    key = load_private_key(key_path)
     digest, signature = sign_image(image, args.version, args.hw, args.build_id, key)
     report["sha256"] = digest.hex()
     report["signature"] = signature.hex()
@@ -312,8 +319,12 @@ def main() -> int:
                       help="hardware id (default 0x0050)")
     pack.add_argument("--build-id", type=lambda v: int(v, 0), default=0,
                       help="free-form build identifier")
-    pack.add_argument("--key", type=Path, default=DEMO_KEY,
-                      help=f"Ed25519 private key (default {DEMO_KEY})")
+    pack.add_argument("--key", type=Path,
+                      default=Path(__file__).resolve().parent / "keys" /
+                              "demo_ed25519_private.pem",
+                      help="Ed25519 private key PEM (or set OTA_SIGNING_KEY); "
+                           "defaults to the committed demo keypair — replace "
+                           "with an offline key for production")
     pack.add_argument("-o", "--output", type=Path, required=True)
     pack.set_defaults(func=cmd_pack)
 

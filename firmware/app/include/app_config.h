@@ -20,7 +20,7 @@
 #define APP_VERSION_MAJOR       0u
 #define APP_VERSION_MINOR       2u
 #define APP_VERSION_PATCH       0u
-#define APP_VERSION             0x00020000u  /* 0.2.0 */
+#define APP_VERSION             0x00000200u  /* 0.2.0 (0x00MMmmpp) */
 #define APP_HARDWARE_ID         0x0050u      /* NUCLEO-C562RE profile */
 
 #define APP_NAME                "stm-ble-ota"

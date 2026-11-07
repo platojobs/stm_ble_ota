@@ -50,13 +50,13 @@ static bool validate_slot(const boot_install_io_t *io, uint32_t base,
     }
 
     image_expectation_t expect;
+    ota_signature_blob_t blob; /* must outlive the if-block below */
     expect.image_size = image_size;
     expect.expected_crc = crc;
     expect.link_base = FLASH_SLOT_A_START;
     expect.sha256 = (sha256 != NULL && !all_zero(sha256, 32u)) ? sha256 : NULL;
     if (signature != NULL && !all_zero(signature, 64u) &&
         expect.sha256 != NULL) {
-        ota_signature_blob_t blob;
         ota_signature_blob_build(&blob, sha256, image_size, version,
                                  build_id, hardware_id);
         expect.signed_blob = &blob;
@@ -86,9 +86,13 @@ static bool slot_a_valid_with_running(const boot_install_io_t *io,
                                       const ota_metadata_t *meta,
                                       ota_reason_t *fail_reason)
 {
+    /* The running image's signature was verified when it was installed.
+     * Re-verify integrity (CRC + SHA-256 + vectors) but skip the signature,
+     * whose blob embeds the original build_id/hardware_id that are not
+     * retained in the running descriptor. */
     return validate_slot(io, FLASH_SLOT_A_START, FLASH_SLOT_A_SIZE,
                          meta->running_size, meta->running_crc32,
-                         meta->running_sha256, meta->running_signature,
+                         meta->running_sha256, NULL,
                          meta->running_version, 0u, 0u, fail_reason);
 }
 
@@ -235,7 +239,7 @@ static int restore_backup(const boot_install_io_t *io, ota_metadata_t *meta)
     ota_reason_t fr;
     if (!validate_slot(io, FLASH_SLOT_A_START, FLASH_SLOT_A_SIZE,
                        meta->backup_size, meta->backup_crc32,
-                       meta->backup_sha256, meta->backup_signature,
+                       meta->backup_sha256, NULL,
                        meta->backup_version, 0u, 0u, &fr)) {
         return -1;
     }

@@ -378,6 +378,64 @@ TEST_CASE(resume_restarts_when_manifest_changes)
 
 /* ------------------------------------------------------------------------- */
 
+/* Bootloader gate: a valid old slot A must be kept when the staged slot B
+ * carries a bad Ed25519 signature. */
+TEST_CASE(boot_install_rejects_bad_signature_and_keeps_old_firmware)
+{
+    flash_setup();
+
+    uint8_t image[256];
+    build_signed_test_image(image);
+    ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_A_START, image, sizeof(image)), 0);
+    ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_B_START, image, sizeof(image)), 0);
+
+    ctx_t ctx;
+    boot_install_io_t io;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.flash = &g_flash;
+    ctx.iface.context = &ctx;
+    ctx.iface.erase_page = ctx_erase;
+    ctx.iface.program = ctx_program;
+    ctx.iface.read = ctx_read;
+    ASSERT_EQ(record_store_init(&ctx.meta_store, &ctx.iface,
+                                FLASH_META_PAGE0, FLASH_META_PAGE1,
+                                (uint16_t)sizeof(ota_metadata_t)), 0);
+
+    io.context = &ctx;
+    io.flash_read = ctx_read;
+    io.flash_erase_page = ctx_erase;
+    io.flash_program = ctx_program;
+    io.metadata_save = ctx_save;
+
+    ota_metadata_t meta;
+    ota_metadata_default(&meta);
+    meta.state = (uint32_t)OTA_STATE_READY_TO_BOOT;
+    meta.image_size = 256u;
+    meta.image_crc32 = 0x21A57323u;
+    meta.image_version = 0x00020000u;
+    meta.build_id = 7u;
+    meta.hardware_id = 0x0050u;
+    memcpy(meta.image_sha256, k_test_sha256, sizeof(meta.image_sha256));
+    memcpy(meta.image_signature, k_test_signature, sizeof(meta.image_signature));
+    meta.image_signature[10] ^= 0x01u; /* one-bit tamper */
+    meta.running_size = 256u;
+    meta.running_crc32 = 0x21A57323u;
+    meta.running_version = 0x00010000u;
+    ASSERT_EQ(ota_metadata_write(&ctx.meta_store, &meta), 0);
+
+    boot_install_result_t result;
+    ASSERT_EQ(boot_install_run(&io, &ctx.meta_store, &result), 0);
+    ASSERT_EQ(result.reason, OTA_REASON_BAD_SIGNATURE);
+    ASSERT_EQ(result.decision, BOOT_DECISION_BOOT_A);
+    ASSERT_EQ(result.install_attempts, 0u); /* rejected before any copy */
+
+    ota_metadata_t after;
+    ASSERT_EQ(ota_metadata_read(&ctx.meta_store, &after), 0);
+    ASSERT_EQ(after.state, (uint32_t)OTA_STATE_ERROR);
+    ASSERT_EQ(after.install_attempts, 0u);
+    ASSERT_EQ(after.running_version, 0x00010000u);
+}
+
 void run_v2_features_tests(void)
 {
     RUN_TEST(boot_policy_boots_when_healthy);
@@ -392,6 +450,7 @@ void run_v2_features_tests(void)
     RUN_TEST(image_validate_accepts_valid_signature);
     RUN_TEST(image_validate_rejects_bad_signature);
     RUN_TEST(image_validate_rejects_bad_sha);
+    RUN_TEST(boot_install_rejects_bad_signature_and_keeps_old_firmware);
 
     RUN_TEST(resume_continues_after_suspend);
     RUN_TEST(resume_restarts_when_manifest_changes);
