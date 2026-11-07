@@ -23,13 +23,14 @@ compiled into the bootloader; the private key is never stored in the repository.
 
 ```bash
 # generate a local keypair (tools/keys/ is git-ignored)
-python3 tools/firmware_tool.py keygen --out tools/keys
+python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
+    --public tools/keys/ed25519_public.pem
 
 python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
 
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
     --version 0.2.0 --hw 0x0050 --build-id 2 \
-    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+    --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
 ```

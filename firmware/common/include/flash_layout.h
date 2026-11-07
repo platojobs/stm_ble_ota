@@ -35,6 +35,13 @@
 #ifndef FLASH_LAYOUT_H
 #define FLASH_LAYOUT_H
 
+/* Pull in the CMSIS device header first when targeting the MCU, so its
+ * FLASH_PAGE_SIZE / FLASH_BANK_SIZE definitions win over the fallbacks below.
+ * Host builds do not define STM32C562xx and use the fallback values. */
+#if defined(STM32C562xx)
+#include "stm32c562xx.h"
+#endif
+
 /* The CMSIS device header also defines FLASH_PAGE_SIZE / FLASH_BANK_SIZE.
  * Guard the definitions so both can be included in any order; the values are
  * identical and are the ones documented for STM32C562RE. */

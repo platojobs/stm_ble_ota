@@ -10,7 +10,10 @@
 #   ./build-host/unit_tests
 
 cmake_minimum_required(VERSION 3.22)
-project(stm_ble_ota_host_tests C)
+option(WERROR "Treat compiler warnings as errors" OFF)
+if(WERROR)
+    add_compile_options(-Werror)
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

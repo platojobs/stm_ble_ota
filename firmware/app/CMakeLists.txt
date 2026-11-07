@@ -20,6 +20,7 @@ add_executable(stm_ble_ota_app
     src/services/ble_service.c
     src/services/ota_service.c
     src/services/cli_service.c
+    ${CMAKE_SOURCE_DIR}/firmware/common/src/syscalls.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/startup_stm32c562xx.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/system_stm32c5xx.c
 )
@@ -29,7 +30,15 @@ target_include_directories(stm_ble_ota_app PRIVATE
     ${COMMON_INCLUDES}
     ${MCU_INCLUDES}
 )
-target_compile_definitions(stm_ble_ota_app PRIVATE ${MCU_DEFINES})
+target_compile_definitions(stm_ble_ota_app PRIVATE
+    ${MCU_DEFINES}
+    APP_VERSION_STRING="${FW_VERSION}"
+    APP_VERSION=${FW_VERSION_U32}u
+    APP_VERSION_MAJOR=${FW_VERSION_MAJOR}u
+    APP_VERSION_MINOR=${FW_VERSION_MINOR}u
+    APP_VERSION_PATCH=${FW_VERSION_PATCH}u
+    APP_BUILD_ID=${FW_BUILD_ID}u
+)
 target_compile_options(stm_ble_ota_app PRIVATE ${COMMON_WARNINGS})
 target_link_libraries(stm_ble_ota_app PRIVATE firmware_common)
 

@@ -211,7 +211,8 @@ docs/          协议、ESP-AT 自定义服务、移植说明
 ## 编译
 
 需要 CMake ≥ 3.22、Ninja，以及**官方 Arm GNU Toolchain**（自带 newlib）。
-Homebrew 中不带 newlib 的 `arm-none-eabi-gcc` 无法链接本工程。
+Homebrew 中不带 newlib 的 `arm-none-eabi-gcc` 无法链接本工程。实测工具链为
+Arm GNU Toolchain 15.3（见 [docs/toolchain.md](docs/toolchain.md)）。
 
 工具链查找顺序：
 
@@ -220,11 +221,21 @@ Homebrew 中不带 newlib 的 `arm-none-eabi-gcc` 无法链接本工程。
 3. `/Applications/ArmGNUToolchain/*/bin`、`/Applications/ARM/bin`；
 4. `PATH` 中的 `arm-none-eabi-gcc`（会给出警告，可能在链接阶段失败）。
 
-编译固件：
+一键构建、版本注入、打包与校验和：
 
 ```bash
-cmake --preset arm
-cmake --build --preset arm
+VERSION=0.3.0 SIGN_KEY=tools/keys/ed25519_private.pem tools/build.sh
+```
+
+`VERSION` 缺省取 `git describe --tags --always --dirty`；没有 git 元数据时可用
+`-DFW_VERSION=1.2.3 -DFW_BUILD_ID=42` 显式指定。脚本默认 `-Werror`
+（`WERROR=OFF` 可关闭）。
+
+纯 CMake：
+
+```bash
+cmake --preset arm-release
+cmake --build --preset arm-release
 ```
 
 产物：
@@ -232,18 +243,25 @@ cmake --build --preset arm
 ```
 build/arm/stm_ble_ota_bootloader.bin / .hex
 build/arm/stm_ble_ota_app.bin / .hex
+build/arm/stm_ble_ota_app-<version>.ota   （设置 SIGN_KEY 时）
+build/arm/SHA256SUMS
 ```
 
 本仓库实测尺寸：bootloader 占用 24,568 B Flash / 约 56 B 静态 RAM，APP 占用
-28,784 B Flash / 约 3.9 KB 静态 RAM（另加 4 KB 栈），均在各自分区内。
+28,936 B Flash / 约 3.9 KB 静态 RAM（另加 4 KB 栈），均在各自分区内。
 
-编译并运行主机测试：
+编译并运行主机测试（原生编译器，CI 中开启 `-Werror`）：
 
 ```bash
-cmake -S tests -B build-host
+cmake -S tests -B build-host -DWERROR=ON
 cmake --build build-host
 ./build-host/unit_tests
 ```
+
+CI（`.github/workflows/ci.yml`）以 `-Werror` 构建两个镜像与主机测试，运行
+`cppcheck`；推送 `v*` 标签时创建 GitHub Release，附 bootloader `.bin`、签名
+后的 APP `.ota` 与 `SHA256SUMS`。发布任务需要仓库 secret
+`OTA_SIGNING_KEY_B64`（base64 编码的 PKCS#8 PEM 私钥）。
 
 ## 烧录与调试（纯命令行）
 
@@ -293,19 +311,19 @@ python3 -m pip install -r tools/requirements.txt
 ```
 
 密钥管理：Ed25519 **公钥**编译进 bootloader
-（`firmware/common/include/ota_public_key.h`）。仓库中提交了一对**演示**
-私钥（`tools/keys/demo_ed25519_private.pem`），以便开箱即用跑通参考 OTA
-流程；任何真实设备都必须用离线生成的密钥替换它（用 `firmware_tool.py keygen`）。
-`tools/keys/` 下的其它文件仍被 git 忽略。
+（`firmware/common/include/ota_public_key.h`）。私钥从不提交到仓库；用
+`firmware_tool.py keygen` 在本地生成密钥对，重新编译 bootloader 以更新公钥，
+私钥保存在离线环境或 CI secret 中。
 
 ```bash
 # 一次性生成签名密钥对（私钥留在本地/离线环境）
-python3 tools/firmware_tool.py keygen --out tools/keys
+python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
+    --public tools/keys/ed25519_public.pem
 
 # 打包并签名
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
     --version 0.2.0 --hw 0x0050 --build-id 200 \
-    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+    --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```

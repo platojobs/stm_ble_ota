@@ -232,7 +232,7 @@ static int handle_set(const char *json)
     }
     g_config = next;
 
-    char response[160];
+    char response[192];
     connected_ssid_json(response, sizeof(response));
     reply(response);
     return 0;
@@ -245,7 +245,7 @@ static int handle_clear(void)
     memset(&g_config, 0, sizeof(g_config));
     (void)wifi_config_clear(&g_store);
 
-    char response[96];
+    char response[192];
     connected_ssid_json(response, sizeof(response));
     reply(response);
     return 0;

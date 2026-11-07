@@ -16,11 +16,26 @@
 #include "stm32c562xx.h"
 
 /* Firmware identity reported by the device-info characteristic and used for
- * OTA downgrade protection. Version format matches ota_version_pack(). */
+ * OTA downgrade protection. CMake injects these from the git tag or
+ * -DFW_VERSION; the values below are the standalone fallback. */
+#ifndef APP_VERSION_MAJOR
 #define APP_VERSION_MAJOR       0u
+#endif
+#ifndef APP_VERSION_MINOR
 #define APP_VERSION_MINOR       2u
+#endif
+#ifndef APP_VERSION_PATCH
 #define APP_VERSION_PATCH       0u
+#endif
+#ifndef APP_VERSION
 #define APP_VERSION             0x00000200u  /* 0.2.0 (0x00MMmmpp) */
+#endif
+#ifndef APP_VERSION_STRING
+#define APP_VERSION_STRING      "0.2.0"
+#endif
+#ifndef APP_BUILD_ID
+#define APP_BUILD_ID            0u
+#endif
 #define APP_HARDWARE_ID         0x0050u      /* NUCLEO-C562RE profile */
 
 #define APP_NAME                "stm-ble-ota"

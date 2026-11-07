@@ -39,9 +39,10 @@ static void cmd_version(void)
     (void)snprintf(json, sizeof(json),
                    "{\"type\":\"cli\",\"cmd\":\"version\",\"name\":\"%s\","
                    "\"version\":\"%u.%u.%u\",\"version_raw\":%u,"
-                   "\"hardware_id\":%u}",
+                   "\"build_id\":%u,\"hardware_id\":%u}",
                    APP_NAME, (unsigned)major, (unsigned)minor, (unsigned)patch,
-                   (unsigned)version, (unsigned)APP_HARDWARE_ID);
+                   (unsigned)version, (unsigned)APP_BUILD_ID,
+                   (unsigned)APP_HARDWARE_ID);
     host_link_send_json(json);
 }
 

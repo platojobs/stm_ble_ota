@@ -11,12 +11,27 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "MinSizeRel"
       }
+    },
+    {
+      "name": "arm-release",
+      "displayName": "STM32C5 firmware (Release, -Werror)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/arm-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-arm-none-eabi.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WERROR": "ON"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "arm",
       "configurePreset": "arm"
+    },
+    {
+      "name": "arm-release",
+      "configurePreset": "arm-release"
     }
   ]
 }

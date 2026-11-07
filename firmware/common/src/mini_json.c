@@ -177,7 +177,9 @@ static void store_value(json_query_t *q, const char *p)
                 q->invalid = true;
                 return;
             }
-            *q->i32_out = -(int32_t)value;
+            *q->i32_out = (value == 0x80000000u)
+                              ? INT32_MIN
+                              : -(int32_t)value;
         } else {
             if (value > 0x7FFFFFFFu) {
                 q->invalid = true;

@@ -52,6 +52,15 @@ int hex_decode(const char *text, uint8_t *out, size_t out_capacity, size_t *out_
     return 0;
 }
 
+static char hex_digit(uint8_t value)
+{
+    uint8_t d = (uint8_t)(value & 0x0Fu);
+    if (d < 10u) {
+        return (char)('0' + d);
+    }
+    return (char)('a' + (d - 10u));
+}
+
 int hex_encode(const uint8_t *data, size_t length, char *out, size_t out_capacity)
 {
     size_t written = 0u;
@@ -63,9 +72,8 @@ int hex_encode(const uint8_t *data, size_t length, char *out, size_t out_capacit
             return -1;
         }
         uint8_t v = data[i];
-        out[written++] = (char)((v >> 4u) < 10u ? ('0' + (v >> 4u)) : ('a' + (v >> 4u) - 10u));
-        out[written++] = (char)((v & 0x0Fu) < 10u ? ('0' + (v & 0x0Fu))
-                                                  : ('a' + (v & 0x0Fu) - 10u));
+        out[written++] = hex_digit((uint8_t)(v >> 4u));
+        out[written++] = hex_digit(v);
     }
     out[written] = '\0';
     return (int)written;

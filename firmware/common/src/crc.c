@@ -49,7 +49,11 @@ uint8_t crc8_sensirion(const uint8_t *data, size_t len)
     for (size_t i = 0; i < len; ++i) {
         crc ^= data[i];
         for (uint8_t bit = 0; bit < 8u; ++bit) {
-            crc = (uint8_t)((crc & 0x80u) ? ((crc << 1u) ^ 0x31u) : (crc << 1u));
+            if ((crc & 0x80u) != 0u) {
+                crc = (uint8_t)((crc << 1u) ^ 0x31u);
+            } else {
+                crc = (uint8_t)(crc << 1u);
+            }
         }
     }
     return crc;

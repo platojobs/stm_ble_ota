@@ -10,6 +10,56 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+# --- Firmware version injection ---------------------------------------------
+# Explicit: -DFW_VERSION=1.2.3 -DFW_BUILD_ID=42
+# Default: nearest git tag (vX.Y.Z), falling back to 0.0.0 outside a repo.
+set(FW_VERSION "" CACHE STRING "Firmware version, semver (default: git describe)")
+set(FW_BUILD_ID "" CACHE STRING "Firmware build id (default: git commit count)")
+if(NOT FW_VERSION)
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE _git_describe OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _git_rc)
+        if(_git_rc EQUAL 0)
+            string(REGEX REPLACE "^v" "" FW_VERSION "${_git_describe}")
+        endif()
+    endif()
+endif()
+if(NOT FW_VERSION)
+    set(FW_VERSION "0.0.0")
+endif()
+if(NOT FW_BUILD_ID)
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE _git_count OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _git_rc)
+        if(_git_rc EQUAL 0)
+            set(FW_BUILD_ID ${_git_count})
+        endif()
+    endif()
+endif()
+if(NOT FW_BUILD_ID)
+    set(FW_BUILD_ID 0)
+endif()
+if(FW_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    set(FW_VERSION_MAJOR ${CMAKE_MATCH_1})
+    set(FW_VERSION_MINOR ${CMAKE_MATCH_2})
+    set(FW_VERSION_PATCH ${CMAKE_MATCH_3})
+else()
+    message(WARNING "FW_VERSION '${FW_VERSION}' is not semver; using 0.0.0")
+    set(FW_VERSION "0.0.0")
+    set(FW_VERSION_MAJOR 0)
+    set(FW_VERSION_MINOR 0)
+    set(FW_VERSION_PATCH 0)
+endif()
+math(EXPR FW_VERSION_U32
+    "(${FW_VERSION_MAJOR} << 16) | (${FW_VERSION_MINOR} << 8) | ${FW_VERSION_PATCH}")
+message(STATUS "Firmware version ${FW_VERSION} (0x${FW_VERSION_U32}), build ${FW_BUILD_ID}")
+
 set(MCU_DEFINES STM32C562xx)
 set(MCU_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/firmware/vendor/cmsis/Include
@@ -20,6 +70,13 @@ set(APP_INCLUDES    ${CMAKE_CURRENT_SOURCE_DIR}/firmware/app/include)
 set(BOOT_INCLUDES   ${CMAKE_CURRENT_SOURCE_DIR}/firmware/bootloader/include)
 
 set(COMMON_WARNINGS -Wall -Wextra -Wshadow -Wdouble-promotion -Wundef)
+
+# Optional strict mode used by CI and tools/build.sh. It is an option rather
+# than CMAKE_C_FLAGS so the toolchain flags from the toolchain file survive.
+option(WERROR "Treat compiler warnings as errors" OFF)
+if(WERROR)
+    add_compile_options(-Werror)
+endif()
 
 # TweetNaCl (public domain) is compiled as part of firmware_common so the
 # bootloader can verify Ed25519 signatures. It is also used by host tests.

@@ -226,7 +226,8 @@ docs/          protocol, ESP-AT custom service, porting
 
 Requires CMake ≥ 3.22, Ninja, and the **official Arm GNU Toolchain** (newlib
 included). The Homebrew `arm-none-eabi-gcc` formula without newlib cannot link
-this project.
+this project. Tested with Arm GNU Toolchain 15.3 (see
+[docs/toolchain.md](docs/toolchain.md)).
 
 Toolchain discovery, in order:
 
@@ -235,11 +236,21 @@ Toolchain discovery, in order:
 3. `/Applications/ArmGNUToolchain/*/bin`, `/Applications/ARM/bin`,
 4. `arm-none-eabi-gcc` on `PATH` (warning; may fail at link time).
 
-Build firmware:
+One-shot build, version injection, package and checksums:
 
 ```bash
-cmake --preset arm
-cmake --build --preset arm
+VERSION=0.3.0 SIGN_KEY=tools/keys/ed25519_private.pem tools/build.sh
+```
+
+`VERSION` defaults to `git describe --tags --always --dirty`; CMake accepts
+`-DFW_VERSION=1.2.3 -DFW_BUILD_ID=42` when git metadata is unavailable. The
+script builds with `-Werror` by default (`WERROR=OFF` to opt out).
+
+Plain CMake:
+
+```bash
+cmake --preset arm-release
+cmake --build --preset arm-release
 ```
 
 Artifacts:
@@ -247,19 +258,26 @@ Artifacts:
 ```
 build/arm/stm_ble_ota_bootloader.bin / .hex
 build/arm/stm_ble_ota_app.bin / .hex
+build/arm/stm_ble_ota_app-<version>.ota   (when SIGN_KEY is set)
+build/arm/SHA256SUMS
 ```
 
 Reference sizes from this tree: bootloader 24,568 B flash / ~56 B static RAM,
-application 28,784 B flash / ~3.9 KB static RAM (plus a 4 KB stack). Both fit
+application 28,936 B flash / ~3.9 KB static RAM (plus a 4 KB stack). Both fit
 their regions.
 
-Build and run host tests (native compiler):
+Build and run host tests (native compiler, `-Werror` in CI):
 
 ```bash
-cmake -S tests -B build-host
+cmake -S tests -B build-host -DWERROR=ON
 cmake --build build-host
 ./build-host/unit_tests
 ```
+
+CI (`.github/workflows/ci.yml`) builds both images and the host tests with
+`-Werror`, runs `cppcheck`, and on a `v*` tag creates a GitHub Release with the
+bootloader `.bin`, signed application `.ota` and `SHA256SUMS`. The release job
+requires the `OTA_SIGNING_KEY_B64` repository secret (base64 PKCS#8 PEM).
 
 ## Flash and debug (CLI only)
 
@@ -312,20 +330,19 @@ python3 -m pip install -r tools/requirements.txt
 ```
 
 Key handling: the Ed25519 **public** key is compiled into the bootloader
-(`firmware/common/include/ota_public_key.h`). A **demo** private key
-(`tools/keys/demo_ed25519_private.pem`) is committed so the reference OTA flow
-works out of the box; it must be replaced with an offline-generated key for any
-real device (use `firmware_tool.py keygen`). Other files under `tools/keys/`
-stay git-ignored.
+(`firmware/common/include/ota_public_key.h`). Private keys are never committed;
+generate a keypair locally with `keygen`, rebuild the bootloader with the new
+public key, and keep the private half offline or in the CI secret store.
 
 ```bash
 # one-time: generate a signing keypair (private stays local/offline)
-python3 tools/firmware_tool.py keygen --out tools/keys
+python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
+    --public tools/keys/ed25519_public.pem
 
 # package and sign an image
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
     --version 0.2.0 --hw 0x0050 --build-id 200 \
-    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+    --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```

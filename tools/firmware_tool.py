@@ -29,17 +29,16 @@ CRC-32 here is the same reflected IEEE polynomial (0xEDB88320) used by
 firmware/common/src/crc.c, so zlib.crc32()/binascii.crc32() are compatible.
 
 Signature (v2 packages only): the Ed25519 private key is passed with --key
-(default tools/keys/demo_ed25519_private.pem). The matching public key is
+(pass --key or set OTA_SIGNING_KEY). The matching public key is
 compiled into the bootloader (firmware/common/include/ota_public_key.h).
-Replace the demo keypair with an offline-generated one for production and never
-commit the production private key.
+Private keys are never committed; generate them locally and keep them offline.
 
 Examples:
     python3 tools/firmware_tool.py inspect build/stm_ble_ota_app.bin
-    python3 tools/firmware_tool.py keygen -o tools/keys/my_ed25519_private.pem
+    python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem
     python3 tools/firmware_tool.py pack build/stm_ble_ota_app.bin \\
         --version 0.2.0 --hw 0x0050 --build-id 1 \\
-        --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+        --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
     python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
 """
 
@@ -64,8 +63,6 @@ SLOT_A_START = 0x08008000
 SLOT_A_SIZE = 96 * 1024
 SRAM_START = 0x20000000
 SRAM_SIZE = 128 * 1024
-
-DEMO_KEY = Path(__file__).resolve().parent / "keys" / "demo_ed25519_private.pem"
 
 # Canonical signed blob: 32 bytes sha256 + size(u32) + version(u32) +
 # build_id(u32) + hardware_id(u16) + reserved(u16), little-endian.
@@ -319,12 +316,8 @@ def main() -> int:
                       help="hardware id (default 0x0050)")
     pack.add_argument("--build-id", type=lambda v: int(v, 0), default=0,
                       help="free-form build identifier")
-    pack.add_argument("--key", type=Path,
-                      default=Path(__file__).resolve().parent / "keys" /
-                              "demo_ed25519_private.pem",
-                      help="Ed25519 private key PEM (or set OTA_SIGNING_KEY); "
-                           "defaults to the committed demo keypair — replace "
-                           "with an offline key for production")
+    pack.add_argument("--key", type=Path, default=None,
+                      help="Ed25519 private key PEM (or set OTA_SIGNING_KEY)")
     pack.add_argument("-o", "--output", type=Path, required=True)
     pack.set_defaults(func=cmd_pack)
 

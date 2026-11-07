@@ -4,6 +4,7 @@ add_executable(bootloader
     src/main.c
     src/boot_flash.c
     src/boot_jump.c
+    ${CMAKE_SOURCE_DIR}/firmware/common/src/syscalls.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/startup_stm32c562xx.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/system_stm32c5xx.c
 )
