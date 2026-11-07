@@ -101,12 +101,15 @@ static void cmd_ota_start(void)
 
 static void cmd_ota_status(void)
 {
-    char json[160];
+    err_code_t code = ota_service_last_error_code();
+    char json[240];
     (void)snprintf(json, sizeof(json),
                    "{\"type\":\"cli\",\"cmd\":\"ota\",\"action\":\"status\","
-                   "\"state\":%u,\"reason\":%u,\"received\":%u,\"total\":%u}",
+                   "\"state\":%u,\"reason\":%u,\"err_code\":%u,"
+                   "\"err_name\":\"%s\",\"received\":%u,\"total\":%u}",
                    (unsigned)ota_service_state(),
                    (unsigned)ota_service_last_reason(),
+                   (unsigned)code, err_code_name(code),
                    (unsigned)ota_service_received(),
                    (unsigned)ota_service_total());
     host_link_send_json(json);

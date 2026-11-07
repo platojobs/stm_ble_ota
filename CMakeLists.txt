@@ -98,6 +98,7 @@ add_library(firmware_common STATIC
     firmware/common/src/sensor_filter.c
     firmware/common/src/esp_at_parser.c
     firmware/common/src/hex_util.c
+    firmware/common/src/err_code.c
 )
 target_include_directories(firmware_common PUBLIC
     ${COMMON_INCLUDES}

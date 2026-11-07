@@ -257,6 +257,11 @@ uint8_t ota_service_last_reason(void)
     return (uint8_t)g_receiver.last_reason;
 }
 
+err_code_t ota_service_last_error_code(void)
+{
+    return err_code_from_ota_reason(g_receiver.last_reason);
+}
+
 uint32_t ota_service_received(void)
 {
     return g_receiver.received;

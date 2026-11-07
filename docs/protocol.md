@@ -66,6 +66,11 @@ Device to host:
 sample is also published as a 20-byte binary notification on the BLE sensor
 characteristic (see `sensor_notify_payload_t` in `ota_protocol.h`).
 
+`reason` is the 8-bit `ota_reason_t` value carried in OTA progress/info
+payloads. The CLI `ota status` command additionally reports the same failure
+translated into the device-wide 16-bit space as `err_code` / `err_name`; the
+full table is in [error_codes.md](error_codes.md).
+
 ## 3. ESP-AT command sequences
 
 ### 3.1 Boot and WiFi provisioning

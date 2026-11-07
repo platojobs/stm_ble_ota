@@ -219,7 +219,7 @@ firmware/
 cmake/         arm-none-eabi toolchain file
 tests/         host unit tests + fake flash
 tools/         firmware packer and provisioning/OTA host script
-docs/          protocol, ESP-AT custom service, porting
+docs/          protocol, ESP-AT custom service, porting, error codes
 ```
 
 ## Build

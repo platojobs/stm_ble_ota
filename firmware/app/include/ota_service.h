@@ -16,6 +16,7 @@
 #define OTA_SERVICE_H
 
 #include "ota_protocol.h"
+#include "err_code.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -41,6 +42,9 @@ uint32_t ota_service_running_version(void);
 /** State machine inspection for the device-info JSON. */
 uint8_t ota_service_state(void);
 uint8_t ota_service_last_reason(void);
+/** Last reason translated into the shared error-code space (ERR_CODE_OK when
+ *  the last transfer completed or nothing happened yet). */
+err_code_t ota_service_last_error_code(void);
 uint32_t ota_service_received(void);
 uint32_t ota_service_total(void);
 

@@ -205,7 +205,7 @@ firmware/
 cmake/         arm-none-eabi 工具链文件
 tests/         主机侧单元测试 + 假 Flash
 tools/         固件打包与配网/OTA 上位机脚本
-docs/          协议、ESP-AT 自定义服务、移植说明
+docs/          协议、ESP-AT 自定义服务、移植说明、错误码表
 ```
 
 ## 编译

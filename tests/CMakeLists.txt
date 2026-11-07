@@ -43,6 +43,7 @@ set(COMMON_SOURCES
     ${COMMON_DIR}/src/cli_parser.c
     ${COMMON_DIR}/src/sensor_filter.c
     ${COMMON_DIR}/src/esp_at_parser.c
+    ${COMMON_DIR}/src/err_code.c
 )
 
 add_executable(unit_tests
@@ -51,6 +52,7 @@ add_executable(unit_tests
     test_common.c
     test_ota_logic.c
     test_v2_features.c
+    test_err_codes.c
     test_main.c
 )
 
