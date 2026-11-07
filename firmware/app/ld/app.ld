@@ -1,7 +1,7 @@
 /*
  * Application linker script for STM32C562RE, slot A.
  *
- * The application is linked at 0x08008000 (128 KB). This is the address that
+ * The application is linked at 0x08008000 (96 KB). This is the address that
  * the bootloader copies the downloaded image to and the address the OTA image
  * must be linked for. Slot B is never linked directly; it only stores a copy
  * of an image that is already linked for slot A.
@@ -18,7 +18,7 @@ STACK_SIZE = 0x1000;
 
 MEMORY
 {
-  ROM (rx)  : ORIGIN = 0x08008000, LENGTH = 0x20000
+  ROM (rx)  : ORIGIN = 0x08008000, LENGTH = 0x18000
   RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20000
 }
 

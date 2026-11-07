@@ -18,9 +18,9 @@
 /* Firmware identity reported by the device-info characteristic and used for
  * OTA downgrade protection. Version format matches ota_version_pack(). */
 #define APP_VERSION_MAJOR       0u
-#define APP_VERSION_MINOR       1u
+#define APP_VERSION_MINOR       2u
 #define APP_VERSION_PATCH       0u
-#define APP_VERSION             0x00000100u  /* 0.1.0 */
+#define APP_VERSION             0x00020000u  /* 0.2.0 */
 #define APP_HARDWARE_ID         0x0050u      /* NUCLEO-C562RE profile */
 
 #define APP_NAME                "stm-ble-ota"

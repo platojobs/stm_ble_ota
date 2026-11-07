@@ -3,7 +3,8 @@
 
 /**
  * @file    ota_service.c
- * @brief   Connects the OTA receiver to slot B, metadata and host notifications.
+ * @brief   Connects the resumable OTA receiver to slot B, metadata and host
+ *          notifications.
  */
 
 #include "ota_service.h"
@@ -80,6 +81,13 @@ static void send_progress(ota_state_t state, ota_reason_t reason,
     send_frame(STM_FRAME_OTA_PROGRESS, &progress, sizeof(progress));
 }
 
+static void send_info(void)
+{
+    ota_info_payload_t info;
+    ota_receiver_build_info(&g_receiver, &info);
+    send_frame(STM_FRAME_OTA_INFO, &info, sizeof(info));
+}
+
 static void receiver_notify(void *context, ota_state_t state, ota_reason_t reason,
                             uint32_t received, uint32_t total, uint32_t crc32)
 {
@@ -94,6 +102,9 @@ static void handle_frame(const stm_frame_t *frame, void *context)
     ota_reason_t reason = OTA_REASON_NONE;
 
     switch ((stm_frame_type_t)frame->type) {
+    case STM_FRAME_OTA_QUERY:
+        send_info();
+        break;
     case STM_FRAME_OTA_BEGIN: {
         if (frame->payload_len != sizeof(ota_begin_payload_t)) {
             send_progress(OTA_STATE_ERROR, OTA_REASON_BAD_SIZE, 0u, 0u, 0u);
@@ -103,7 +114,8 @@ static void handle_frame(const stm_frame_t *frame, void *context)
         memcpy(&begin, frame->payload, sizeof(begin));
         reason = ota_receiver_begin(&g_receiver, &begin, now);
         if (reason != OTA_REASON_NONE) {
-            send_progress(OTA_STATE_ERROR, reason, 0u, begin.image_size, 0u);
+            send_progress(OTA_STATE_ERROR, reason, g_receiver.received,
+                          g_receiver.image_size, g_receiver.running_crc);
         }
         break;
     }
@@ -166,6 +178,10 @@ int ota_service_init(void)
     if (found && meta.state == OTA_STATE_INSTALLED &&
         meta.image_version != 0u) {
         g_running_version = meta.image_version;
+        if (meta.running_version == 0u) {
+            ota_metadata_promote_running(&meta);
+            (void)ota_metadata_write(&g_meta_store, &meta);
+        }
     }
 
     g_io.context = NULL;
@@ -180,6 +196,8 @@ int ota_service_init(void)
         return -1;
     }
     ota_receiver_set_installed_version(&g_receiver, g_running_version);
+    ota_receiver_attach_metadata(&g_receiver, &meta);
+    ota_receiver_restore(&g_receiver, &meta);
 
     stm_frame_parser_init(&g_parser);
     return 0;
@@ -217,6 +235,13 @@ void ota_service_tick(uint32_t now_ms)
     }
 }
 
+void ota_service_on_ble_disconnect(void)
+{
+    /* A BLE drop in the middle of a transfer is a recoverable event: persist
+     * the partial prefix so the next connection can resume. */
+    ota_receiver_suspend(&g_receiver, OTA_REASON_TIMEOUT, bsp_time_ms());
+}
+
 uint32_t ota_service_running_version(void)
 {
     return g_running_version;
@@ -230,4 +255,40 @@ uint8_t ota_service_state(void)
 uint8_t ota_service_last_reason(void)
 {
     return (uint8_t)g_receiver.last_reason;
+}
+
+uint32_t ota_service_received(void)
+{
+    return g_receiver.received;
+}
+
+uint32_t ota_service_total(void)
+{
+    return g_receiver.image_size;
+}
+
+void ota_service_abort_transfer(void)
+{
+    ota_receiver_abort(&g_receiver, OTA_REASON_ABORTED, bsp_time_ms());
+}
+
+void ota_service_confirm_boot(void)
+{
+    ota_metadata_t meta;
+    bool found = false;
+    ota_metadata_load_or_default(&g_meta_store, &meta, &found);
+    if (!found) {
+        ota_metadata_default(&meta);
+    }
+    if (meta.boot_attempts != 0u) {
+        meta.boot_attempts = 0u;
+        (void)ota_metadata_write(&g_meta_store, &meta);
+    }
+}
+
+void ota_service_factory_reset(void)
+{
+    ota_metadata_t meta;
+    ota_metadata_default(&meta);
+    (void)ota_metadata_write(&g_meta_store, &meta);
 }

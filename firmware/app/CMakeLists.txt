@@ -1,4 +1,4 @@
-# Application firmware: 128 KB in slot A at 0x08008000.
+# Application firmware: 96 KB in slot A at 0x08008000.
 #
 # Layer order: bsp -> drivers -> services -> app. Only app/main.c wires
 # services together; services depend on drivers and BSP, never the reverse.
@@ -12,12 +12,14 @@ add_executable(stm_ble_ota_app
     src/bsp/bsp_i2c.c
     src/bsp/bsp_adc.c
     src/bsp/bsp_flash.c
+    src/bsp/bsp_watchdog.c
     src/drivers/sht30.c
     src/drivers/esp32_at.c
     src/services/sensor_service.c
     src/services/wifi_service.c
     src/services/ble_service.c
     src/services/ota_service.c
+    src/services/cli_service.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/startup_stm32c562xx.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/system_stm32c5xx.c
 )

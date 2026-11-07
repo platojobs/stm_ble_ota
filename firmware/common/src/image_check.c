@@ -4,6 +4,8 @@
 #include "image_check.h"
 #include "flash_layout.h"
 #include "crc.h"
+#include "sha256.h"
+#include "ed25519_verify.h"
 
 #include <stddef.h>
 
@@ -87,4 +89,72 @@ image_check_result_t image_probe(const image_flash_if_t *flash_if,
 {
     /* For a probe the reset handler only has to land inside the slot. */
     return check_vectors(flash_if, base, base, slot_size);
+}
+
+image_check_result_t image_validate_full(const image_flash_if_t *flash_if,
+                                         uint32_t storage_base,
+                                         uint32_t slot_size,
+                                         const image_expectation_t *expect)
+{
+    if (flash_if == NULL || flash_if->read == NULL || expect == NULL) {
+        return IMAGE_ERR_FLASH;
+    }
+    if (expect->image_size < VECTOR_TABLE_MIN_SIZE ||
+        expect->image_size > slot_size) {
+        return IMAGE_ERR_SIZE;
+    }
+
+    image_check_result_t result = check_vectors(flash_if, storage_base,
+                                                expect->link_base,
+                                                expect->image_size);
+    if (result != IMAGE_OK) {
+        return result;
+    }
+
+    uint32_t crc = 0xFFFFFFFFu;
+    sha256_t sha;
+    uint8_t chunk[64];
+    uint32_t offset = 0u;
+
+    sha256_init(&sha);
+    while (offset < expect->image_size) {
+        uint32_t n = expect->image_size - offset;
+        if (n > sizeof(chunk)) {
+            n = (uint32_t)sizeof(chunk);
+        }
+        if (flash_if->read(flash_if->context, storage_base + offset, chunk, n) != 0) {
+            return IMAGE_ERR_FLASH;
+        }
+        crc = crc32_ieee(chunk, n, crc);
+        sha256_update(&sha, chunk, n);
+        offset += n;
+    }
+    crc ^= 0xFFFFFFFFu;
+
+    if (expect->expected_crc != 0u && crc != expect->expected_crc) {
+        return IMAGE_ERR_CRC;
+    }
+
+    if (expect->sha256 != NULL) {
+        uint8_t digest[SHA256_DIGEST_SIZE];
+        sha256_final(&sha, digest);
+        bool match = true;
+        for (uint32_t i = 0; i < SHA256_DIGEST_SIZE; ++i) {
+            if (digest[i] != expect->sha256[i]) {
+                match = false;
+                break;
+            }
+        }
+        if (!match) {
+            return IMAGE_ERR_SHA256;
+        }
+    }
+
+    if (expect->signature != NULL && expect->signed_blob != NULL) {
+        if (!ed25519_verify(expect->signature, expect->signed_blob,
+                            sizeof(ota_signature_blob_t))) {
+            return IMAGE_ERR_SIGNATURE;
+        }
+    }
+    return IMAGE_OK;
 }

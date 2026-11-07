@@ -56,6 +56,8 @@ FRAME_OTA_END = 0x12
 FRAME_OTA_ABORT = 0x13
 FRAME_OTA_PROGRESS = 0x14
 FRAME_OTA_RESULT = 0x15
+FRAME_OTA_QUERY = 0x16
+FRAME_OTA_INFO = 0x17
 
 STATE_IDLE = 0
 STATE_RECEIVING = 1
@@ -85,10 +87,12 @@ REASON_NAMES = {
     6: "timeout",
     7: "aborted",
     8: "bad_version",
+    9: "bad_signature",
 }
 
 PACKAGE_MAGIC = b"OTAP"
-PACKAGE_HEADER = struct.Struct("<4sHHIIII")
+PACKAGE_HEADER_V1 = struct.Struct("<4sHHIIII")
+PACKAGE_HEADER_V2 = struct.Struct("<4sHHIIII32s64s")
 
 SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb"
 CHAR_INFO = "0000ff01-0000-1000-8000-00805f9b34fb"
@@ -98,7 +102,7 @@ CHAR_OTA_CONTROL = "0000ff04-0000-1000-8000-00805f9b34fb"
 CHAR_OTA_DATA = "0000ff05-0000-1000-8000-00805f9b34fb"
 
 SLOT_A_START = 0x08008000
-SLOT_A_SIZE = 128 * 1024
+SLOT_A_SIZE = 96 * 1024
 SRAM_START = 0x20000000
 SRAM_SIZE = 128 * 1024
 
@@ -124,15 +128,23 @@ def load_image(path: Path) -> dict:
     meta = {"image": raw, "version": 0, "hardware_id": 0x0050, "build_id": 0,
             "source": str(path)}
     if raw[:4] == PACKAGE_MAGIC:
-        magic, fmt, hardware_id, version, size, crc, build_id = \
-            PACKAGE_HEADER.unpack_from(raw, 0)
-        image = raw[PACKAGE_HEADER.size:]
-        if fmt != 1:
+        fmt = struct.unpack_from("<H", raw, 4)[0]
+        if fmt == 1:
+            magic, fmt, hardware_id, version, size, crc, build_id = \
+                PACKAGE_HEADER_V1.unpack_from(raw, 0)
+            image = raw[PACKAGE_HEADER_V1.size:]
+            sha = sig = None
+        elif fmt == 2:
+            (magic, fmt, hardware_id, version, size, crc, build_id,
+             sha, sig) = PACKAGE_HEADER_V2.unpack_from(raw, 0)
+            image = raw[PACKAGE_HEADER_V2.size:]
+        else:
             raise ToolError(f"{path}: unsupported package format {fmt}")
         if size != len(image) or crc != (zlib.crc32(image) & 0xFFFFFFFF):
             raise ToolError(f"{path}: package header/CRC mismatch")
         meta.update(image=image, version=version, hardware_id=hardware_id,
-                    build_id=build_id, package_crc=crc)
+                    build_id=build_id, package_crc=crc, image_sha256=sha,
+                    image_signature=sig)
 
     image = meta["image"]
     if len(image) > SLOT_A_SIZE:
@@ -144,6 +156,10 @@ def load_image(path: Path) -> dict:
         raise ToolError(f"{path}: vector table does not look like a slot A image")
     meta["image_crc32"] = zlib.crc32(image) & 0xFFFFFFFF
     meta["image_size"] = len(image)
+    if "image_sha256" not in meta:
+        import hashlib
+        meta["image_sha256"] = hashlib.sha256(image).digest()
+        meta["image_signature"] = None
     return meta
 
 
@@ -157,13 +173,32 @@ def build_frame(ftype: int, seq: int, offset: int, payload: bytes) -> bytes:
 
 
 def begin_payload(meta: dict) -> bytes:
-    return struct.pack("<IIIIHH", meta["image_size"], meta["image_crc32"],
+    sha = meta.get("image_sha256") or b"\x00" * 32
+    sig = meta.get("image_signature") or b"\x00" * 64
+    return struct.pack("<IIIIHH32s64s", meta["image_size"], meta["image_crc32"],
                        meta["version"], meta["build_id"],
-                       meta["hardware_id"], 0)
+                       meta["hardware_id"], 0, sha, sig)
 
 
 def end_payload(meta: dict) -> bytes:
     return struct.pack("<II", meta["image_size"], meta["image_crc32"])
+
+
+def parse_info_frame(frame: bytes) -> dict | None:
+    if len(frame) < HEADER_SIZE:
+        return None
+    ftype = frame[2]
+    payload_len = struct.unpack_from("<H", frame, 6)[0]
+    payload = frame[HEADER_SIZE:HEADER_SIZE + payload_len]
+    if ftype == FRAME_OTA_INFO and len(payload) >= 32:
+        state, reason, _rsv, received, total, crc, version, chunk_size, \
+            chunk_count, hardware_id, _rsv2 = \
+            struct.unpack_from("<BBHIIIIIIHH", payload)
+        return {"state": state, "reason": reason, "received": received,
+                "total": total, "crc32": crc, "version": version,
+                "chunk_size": chunk_size, "chunk_count": chunk_count,
+                "hardware_id": hardware_id}
+    return None
 
 
 def parse_progress_frame(frame: bytes) -> dict | None:
@@ -434,16 +469,22 @@ def run_ota_serial(transport: SerialTransport, meta: dict, chunk: int,
     seq += 1
     start = transport.wait_json(timeout, lambda m: m.get("type") == "ota", "OTA BEGIN")
     print(describe_ota(start), file=sys.stderr)
+    if start.get("state") == STATE_ERROR:
+        raise ToolError(describe_ota(start))
 
     image = meta["image"]
     total = len(image)
-    for offset in range(0, total, chunk):
+    offset = int(start.get("received", 0))
+    if offset:
+        print(f"resuming from offset {offset}", file=sys.stderr)
+    while offset < total:
         payload = image[offset:offset + chunk]
         transport.send_frame(build_frame(FRAME_OTA_DATA, seq, offset, payload))
         seq += 1
+        offset += len(payload)
         if pace:
             time.sleep(pace)
-        if (offset // chunk) % 16 == 0:
+        if ((offset - 1) // chunk) % 16 == 0:
             drain_ota_serial(transport)
     drain_ota_serial(transport)
 
@@ -474,14 +515,22 @@ async def run_ota_ble(transport: BleTransport, meta: dict, chunk: int,
     await transport.send_control_frame(build_frame(FRAME_OTA_BEGIN, seq, 0,
                                                    begin_payload(meta)))
     seq += 1
-    start = await transport.wait_progress(timeout, {STATE_RECEIVING})
+    start = await transport.wait_progress(timeout, {STATE_RECEIVING, STATE_ERROR})
     print(describe_ota(start), file=sys.stderr)
+    if start["state"] == STATE_ERROR:
+        raise ToolError(describe_ota(start))
 
     image = meta["image"]
-    for offset in range(0, len(image), chunk):
+    total = len(image)
+    offset = int(start.get("received", 0))
+    if offset:
+        print(f"resuming from offset {offset}", file=sys.stderr)
+    while offset < total:
+        payload = image[offset:offset + chunk]
         await transport.send_data_frame(build_frame(FRAME_OTA_DATA, seq, offset,
-                                                    image[offset:offset + chunk]))
+                                                    payload))
         seq += 1
+        offset += len(payload)
         if pace:
             await asyncio.sleep(pace)
         while not transport.frame_queue.empty():

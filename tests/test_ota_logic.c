@@ -11,6 +11,7 @@
 #include "ota_receiver.h"
 #include "boot_install.h"
 #include "image_check.h"
+#include "sha256.h"
 
 #include <string.h>
 
@@ -57,7 +58,8 @@ static int install_ctx_init(install_context_t *ctx)
     ctx->flash = &g_flash;
     ctx->iface = make_record_if();
     return record_store_init(&ctx->meta_store, &ctx->iface,
-                             FLASH_META_PAGE0, FLASH_META_PAGE1, 128u);
+                             FLASH_META_PAGE0, FLASH_META_PAGE1,
+                             (uint16_t)sizeof(ota_metadata_t));
 }
 
 /* The injected IO callbacks all receive install_context_t so the fake flash
@@ -311,7 +313,8 @@ TEST_CASE(ota_metadata_roundtrip)
     flash_setup();
     record_flash_if_t iface = make_record_if();
     record_store_t store;
-    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1, 128u), 0);
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_META_PAGE0, FLASH_META_PAGE1,
+                                (uint16_t)sizeof(ota_metadata_t)), 0);
 
     ota_metadata_t meta;
     ota_metadata_default(&meta);
@@ -375,6 +378,64 @@ TEST_CASE(image_validate_rejects_bad_size)
 
 /* --- OTA receiver -------------------------------------------------------- */
 
+static void fill_manifest_sha(ota_begin_payload_t *begin, const uint8_t *image,
+                              uint32_t size)
+{
+    sha256_t sha;
+    sha256_init(&sha);
+    sha256_update(&sha, image, size);
+    sha256_final(&sha, begin->image_sha256);
+    /* The receiver only requires a non-zero signature; Ed25519 verification
+     * happens in the bootloader tests. */
+    memset(begin->signature, 0x5A, sizeof(begin->signature));
+}
+
+static void make_manifest(ota_begin_payload_t *begin, const uint8_t *image,
+                          uint32_t size, uint32_t crc, uint32_t version)
+{
+    memset(begin, 0, sizeof(*begin));
+    begin->image_size = size;
+    begin->image_crc32 = crc;
+    begin->version = version;
+    begin->build_id = 7u;
+    begin->hardware_id = 0x0050u;
+    fill_manifest_sha(begin, image, size);
+}
+
+static ota_reason_t feed_range(ota_receiver_t *receiver, const uint8_t *image,
+                               uint32_t from, uint32_t to, uint32_t step)
+{
+    ota_reason_t reason = OTA_REASON_NONE;
+    for (uint32_t offset = from; offset < to; offset += step) {
+        uint32_t n = to - offset;
+        if (n > step) {
+            n = step;
+        }
+        reason = ota_receiver_data(receiver, offset, image + offset, n,
+                                   offset + 1u);
+        if (reason != OTA_REASON_NONE) {
+            return reason;
+        }
+    }
+    return reason;
+}
+
+/* Re-create the receiver from persisted metadata, as the application does after
+ * a reset. The fake flash keeps its contents across this call. */
+static int reboot_receiver(receiver_context_t *ctx, ota_receiver_t *receiver)
+{
+    ota_metadata_t meta;
+    if (receiver_setup(ctx, receiver, 0x0050u) != 0) {
+        return -1;
+    }
+    if (ota_metadata_read(&ctx->install.meta_store, &meta) != 0) {
+        return -1;
+    }
+    ota_receiver_attach_metadata(receiver, &meta);
+    ota_receiver_restore(receiver, &meta);
+    return 0;
+}
+
 TEST_CASE(ota_receiver_full_transfer)
 {
     flash_setup();
@@ -387,12 +448,14 @@ TEST_CASE(ota_receiver_full_transfer)
     uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
 
     ota_begin_payload_t begin;
+    memset(&begin, 0, sizeof(begin));
     begin.image_size = sizeof(image);
     begin.image_crc32 = crc;
     begin.version = 0x00010001u;
     begin.build_id = 42u;
     begin.hardware_id = 0x0050u;
     begin.reserved = 0u;
+    fill_manifest_sha(&begin, image, sizeof(image));
 
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_NONE);
 
@@ -523,6 +586,162 @@ TEST_CASE(ota_receiver_rejects_downgrade)
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_BAD_VERSION);
 }
 
+TEST_CASE(ota_receiver_rejects_unsigned_begin)
+{
+    flash_setup();
+
+    receiver_context_t ctx;
+    ota_receiver_t receiver;
+    ASSERT_EQ(receiver_setup(&ctx, &receiver, 0x0050u), 0);
+
+    uint8_t image[4096];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+    memset(begin.signature, 0, sizeof(begin.signature));
+
+    ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_BAD_SIGNATURE);
+    ASSERT_EQ(receiver.state, OTA_STATE_ERROR);
+}
+
+TEST_CASE(ota_receiver_resumes_after_reset)
+{
+    flash_setup();
+
+    receiver_context_t ctx1;
+    ota_receiver_t first;
+    ASSERT_EQ(receiver_setup(&ctx1, &first, 0x0050u), 0);
+
+    uint8_t image[20480]; /* two full 8 KB chunks plus a 4 KB tail */
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+
+    ASSERT_EQ(ota_receiver_begin(&first, &begin, 0u), OTA_REASON_NONE);
+    ASSERT_EQ(feed_range(&first, image, 0u, 16384u, 1000u), OTA_REASON_NONE);
+    ASSERT_EQ(first.chunk_count, 2u);
+    ASSERT_EQ(first.received, 16384u);
+
+    /* Simulated power loss: no suspend, only the chunk-boundary record. */
+    receiver_context_t ctx2;
+    ota_receiver_t resumed;
+    ASSERT_EQ(reboot_receiver(&ctx2, &resumed), 0);
+    ASSERT_EQ(resumed.chunk_count, 2u);
+    ASSERT_EQ(resumed.received, 16384u);
+
+    ASSERT_EQ(ota_receiver_begin(&resumed, &begin, 100u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.received, 16384u);
+
+    ASSERT_EQ(feed_range(&resumed, image, 16384u, sizeof(image), 700u),
+              OTA_REASON_NONE);
+    ota_end_payload_t end = {.image_size = sizeof(image), .image_crc32 = crc};
+    ASSERT_EQ(ota_receiver_end(&resumed, &end, 200u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.state, OTA_STATE_READY_TO_BOOT);
+
+    uint8_t verify[20480];
+    ASSERT_EQ(fake_flash_read(&g_flash, FLASH_SLOT_B_START, verify, sizeof(verify)), 0);
+    ASSERT_EQ(memcmp(verify, image, sizeof(image)), 0);
+}
+
+TEST_CASE(ota_receiver_resume_truncates_corrupt_chunk)
+{
+    flash_setup();
+
+    receiver_context_t ctx1;
+    ota_receiver_t first;
+    ASSERT_EQ(receiver_setup(&ctx1, &first, 0x0050u), 0);
+
+    uint8_t image[24576]; /* exactly three 8 KB chunks */
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+
+    ASSERT_EQ(ota_receiver_begin(&first, &begin, 0u), OTA_REASON_NONE);
+    ASSERT_EQ(feed_range(&first, image, 0u, 16384u, 4096u), OTA_REASON_NONE);
+    ASSERT_EQ(first.chunk_count, 2u);
+
+    /* Corrupt the first chunk: the resume must drop both persisted chunks. */
+    uint8_t bad = 0x00u;
+    ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_B_START + 100u, &bad, 1u), 0);
+
+    receiver_context_t ctx2;
+    ota_receiver_t resumed;
+    ASSERT_EQ(reboot_receiver(&ctx2, &resumed), 0);
+    ASSERT_EQ(ota_receiver_begin(&resumed, &begin, 100u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.received, 0u);
+    ASSERT_EQ(resumed.chunk_count, 0u);
+
+    /* A clean retransmission must still succeed. */
+    ASSERT_EQ(feed_range(&resumed, image, 0u, sizeof(image), 4096u), OTA_REASON_NONE);
+    ota_end_payload_t end = {.image_size = sizeof(image), .image_crc32 = crc};
+    ASSERT_EQ(ota_receiver_end(&resumed, &end, 200u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.state, OTA_STATE_READY_TO_BOOT);
+}
+
+TEST_CASE(ota_receiver_resume_mid_chunk_trims_to_boundary)
+{
+    flash_setup();
+
+    receiver_context_t ctx1;
+    ota_receiver_t first;
+    ASSERT_EQ(receiver_setup(&ctx1, &first, 0x0050u), 0);
+
+    uint8_t image[12288];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+
+    ASSERT_EQ(ota_receiver_begin(&first, &begin, 0u), OTA_REASON_NONE);
+    ASSERT_EQ(feed_range(&first, image, 0u, 10000u, 500u), OTA_REASON_NONE);
+
+    /* Transport loss mid-chunk: the persisted prefix is 10 000 bytes, but only
+     * chunk 0 is complete and verified. */
+    ota_receiver_suspend(&first, OTA_REASON_TIMEOUT, 12000u);
+    ASSERT_EQ(first.received, 10000u);
+    ASSERT_EQ(first.chunk_count, 1u);
+
+    receiver_context_t ctx2;
+    ota_receiver_t resumed;
+    ASSERT_EQ(reboot_receiver(&ctx2, &resumed), 0);
+    ASSERT_EQ(resumed.received, 8192u);
+
+    ASSERT_EQ(ota_receiver_begin(&resumed, &begin, 100u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.received, 8192u);
+    ASSERT_EQ(feed_range(&resumed, image, 8192u, sizeof(image), 500u),
+              OTA_REASON_NONE);
+    ota_end_payload_t end = {.image_size = sizeof(image), .image_crc32 = crc};
+    ASSERT_EQ(ota_receiver_end(&resumed, &end, 200u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.state, OTA_STATE_READY_TO_BOOT);
+}
+
+TEST_CASE(ota_receiver_resume_rejects_manifest_change)
+{
+    flash_setup();
+
+    receiver_context_t ctx1;
+    ota_receiver_t first;
+    ASSERT_EQ(receiver_setup(&ctx1, &first, 0x0050u), 0);
+
+    uint8_t image[16384];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+
+    ASSERT_EQ(ota_receiver_begin(&first, &begin, 0u), OTA_REASON_NONE);
+    ASSERT_EQ(feed_range(&first, image, 0u, 8192u, 1024u), OTA_REASON_NONE);
+
+    receiver_context_t ctx2;
+    ota_receiver_t resumed;
+    ASSERT_EQ(reboot_receiver(&ctx2, &resumed), 0);
+
+    /* Same bytes, different version: the partial prefix must be discarded. */
+    ota_begin_payload_t changed = begin;
+    changed.version = 0x00010002u;
+    ASSERT_EQ(ota_receiver_begin(&resumed, &changed, 100u), OTA_REASON_NONE);
+    ASSERT_EQ(resumed.received, 0u);
+    ASSERT_EQ(resumed.chunk_count, 0u);
+}
+
 /* --- bootloader install -------------------------------------------------- */
 
 static void prepare_ready_metadata(install_context_t *ctx, uint32_t image_size,
@@ -612,8 +831,9 @@ TEST_CASE(boot_install_retries_after_interrupted_copy)
     ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_B_START, image, sizeof(image)), 0);
     prepare_ready_metadata(&ctx, sizeof(image), crc, 0x00010001u, 0u);
 
-    /* Allow the INSTALLING metadata write and one copy block, then fail. */
-    g_flash.fail_program_after = (int64_t)(g_flash.bytes_programmed + 80u);
+    /* Allow the INSTALLING metadata write (header + full 528-byte record) and
+     * a few 16-byte copy granules, then fail in the middle of the copy. */
+    g_flash.fail_program_after = (int64_t)(g_flash.bytes_programmed + 600u);
 
     boot_install_io_t io = make_boot_io(&ctx);
     boot_install_result_t interrupted;
@@ -691,6 +911,11 @@ void run_ota_logic_tests(void)
     RUN_TEST(ota_receiver_rejects_out_of_order);
     RUN_TEST(ota_receiver_timeout);
     RUN_TEST(ota_receiver_rejects_downgrade);
+    RUN_TEST(ota_receiver_rejects_unsigned_begin);
+    RUN_TEST(ota_receiver_resumes_after_reset);
+    RUN_TEST(ota_receiver_resume_truncates_corrupt_chunk);
+    RUN_TEST(ota_receiver_resume_mid_chunk_trims_to_boundary);
+    RUN_TEST(ota_receiver_resume_rejects_manifest_change);
     RUN_TEST(boot_install_copies_valid_slot_b);
     RUN_TEST(boot_install_rejects_corrupt_slot_b);
     RUN_TEST(boot_install_retries_after_interrupted_copy);

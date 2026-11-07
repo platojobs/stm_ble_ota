@@ -8,9 +8,11 @@
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
 _Static_assert(sizeof(stm_frame_header_t) == STM_FRAME_HEADER_SIZE, "frame header size");
-_Static_assert(sizeof(ota_begin_payload_t) == 20u, "ota_begin payload size");
+_Static_assert(sizeof(ota_begin_payload_t) == 116u, "ota_begin payload size");
 _Static_assert(sizeof(ota_end_payload_t) == 8u, "ota_end payload size");
 _Static_assert(sizeof(ota_progress_payload_t) == 16u, "ota_progress payload size");
+_Static_assert(sizeof(ota_info_payload_t) == 32u, "ota_info payload size");
+_Static_assert(sizeof(ota_signature_blob_t) == 48u, "signature blob size");
 _Static_assert(sizeof(sensor_notify_payload_t) == 20u, "sensor payload size");
 #endif
 
@@ -208,4 +210,16 @@ uint32_t stm_frame_build(uint8_t type,
 uint32_t ota_version_pack(uint8_t major, uint8_t minor, uint8_t patch)
 {
     return ((uint32_t)major << 16u) | ((uint32_t)minor << 8u) | (uint32_t)patch;
+}
+
+void ota_signature_blob_build(ota_signature_blob_t *blob, const uint8_t *sha256,
+                              uint32_t image_size, uint32_t version,
+                              uint32_t build_id, uint16_t hardware_id)
+{
+    memset(blob, 0, sizeof(*blob));
+    memcpy(blob->image_sha256, sha256, sizeof(blob->image_sha256));
+    blob->image_size = image_size;
+    blob->version = version;
+    blob->build_id = build_id;
+    blob->hardware_id = hardware_id;
 }

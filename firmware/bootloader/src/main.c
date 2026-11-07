@@ -8,13 +8,17 @@
  * Boot sequence:
  *   1. configure the status LED,
  *   2. read the OTA metadata (with power-loss-safe fallback),
- *   3. run boot_install_run(): validate slot B, copy it to slot A when a
- *      READY_TO_BOOT image is pending, or keep the existing application,
- *   4. blink the outcome, then jump to slot A when an application is valid.
+ *   3. run boot_install_run(): validate slot B (CRC + SHA-256 + Ed25519),
+ *      snapshot slot A into BACKUP, copy slot B to slot A when a READY_TO_BOOT
+ *      image is pending, or keep the existing application,
+ *   4. before jumping, increment boot_attempts and start the IWDG so a hung
+ *      application is rolled back after three unconfirmed boots,
+ *   5. blink the outcome, then jump to slot A when an application is valid.
  *
  * The LED pattern is the only status indicator the bootloader has:
  *   2 short blinks -> existing application is valid
  *   3 short blinks -> a new image was just installed
+ *   4 short blinks -> rolled back to the previous image
  *   5 slow blinks  -> no valid application, staying in the bootloader
  */
 
@@ -106,6 +110,39 @@ static int metadata_save(void *context, const ota_metadata_t *metadata)
     return ota_metadata_write(&g_meta_store, metadata);
 }
 
+/*
+ * Start the independent watchdog (LSI ~32 kHz, /64 prescaler, reload 999 ->
+ * 2.0 s). Once started the IWDG cannot be stopped; the application must reload
+ * it (bsp_watchdog_feed) and clear boot_attempts to confirm a healthy start.
+ */
+static void iwdg_start(void)
+{
+    IWDG->KR = 0x5555u; /* unlock PR/RLR */
+    IWDG->PR = 6u;      /* /64            */
+    IWDG->RLR = 999u;   /* ~2.0 s         */
+    while ((IWDG->SR & (IWDG_SR_PVU | IWDG_SR_RVU)) != 0u) {
+    }
+    IWDG->KR = 0xAAAAu; /* reload         */
+    IWDG->KR = 0xCCCCu; /* start          */
+}
+
+/*
+ * Persist an incremented boot_attempts before jumping. If the application
+ * starts successfully it clears this field; otherwise the next boot sees the
+ * higher count and eventually rolls back.
+ */
+static void increment_boot_attempts(void)
+{
+    ota_metadata_t meta;
+    bool found = false;
+    ota_metadata_load_or_default(&g_meta_store, &meta, &found);
+    if (!found) {
+        ota_metadata_default(&meta);
+    }
+    meta.boot_attempts++;
+    (void)ota_metadata_write(&g_meta_store, &meta);
+}
+
 int main(void)
 {
     led_init();
@@ -143,10 +180,20 @@ int main(void)
     switch (result.decision) {
     case BOOT_DECISION_BOOT_A:
         blink(2u, 40u, 120u);
+        increment_boot_attempts();
+        iwdg_start();
         boot_jump_to_app(FLASH_SLOT_A_START);
         break;
     case BOOT_DECISION_BOOT_INSTALLED:
         blink(3u, 40u, 120u);
+        increment_boot_attempts();
+        iwdg_start();
+        boot_jump_to_app(FLASH_SLOT_A_START);
+        break;
+    case BOOT_DECISION_ROLLED_BACK:
+        blink(4u, 40u, 120u);
+        /* The rollback already cleared boot_attempts. */
+        iwdg_start();
         boot_jump_to_app(FLASH_SLOT_A_START);
         break;
     case BOOT_DECISION_STAY:

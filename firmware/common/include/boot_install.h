@@ -6,9 +6,12 @@
  * @brief   Boot-time decision logic shared by the bootloader and host tests.
  *
  * The bootloader never erases slot A until the downloaded image in slot B has
- * been fully validated (size, vector table, CRC). This guarantees that a
- * corrupt download leaves the old application bootable. If power is lost while
- * copying, slot B is still intact and the copy is repeated on the next boot.
+ * been fully validated (size, vector table, CRC, SHA-256 and Ed25519
+ * signature). Before slot A is touched, the running image is snapshotted into
+ * the BACKUP slot so a failed or never-confirmed upgrade can be rolled back.
+ * If power is lost while copying, slot B is still intact and the copy is
+ * repeated on the next boot; the backup is only marked valid after its bytes
+ * and CRC have been read back from BACKUP.
  */
 
 #ifndef BOOT_INSTALL_H
@@ -32,9 +35,10 @@ typedef struct {
 } boot_install_io_t;
 
 typedef enum {
-    BOOT_DECISION_STAY = 0,     /* no valid application, stay in bootloader     */
-    BOOT_DECISION_BOOT_A = 1,   /* jump to slot A                               */
-    BOOT_DECISION_BOOT_INSTALLED = 2, /* slot A was just installed, jump to it  */
+    BOOT_DECISION_STAY = 0,          /* no valid application, stay in bootloader  */
+    BOOT_DECISION_BOOT_A = 1,        /* jump to slot A                            */
+    BOOT_DECISION_BOOT_INSTALLED = 2,/* slot A was just installed, jump to it     */
+    BOOT_DECISION_ROLLED_BACK = 3,   /* BACKUP restored into slot A, jump to it   */
 } boot_decision_t;
 
 typedef struct {
@@ -42,13 +46,15 @@ typedef struct {
     ota_reason_t reason;
     bool metadata_found;
     bool installed_now;
+    bool rolled_back;
     uint32_t install_attempts;
     uint32_t boot_address;
 } boot_install_result_t;
 
 /**
  * Run the boot decision state machine and, when required, install slot B into
- * slot A. The caller only has to honour @c result.decision.
+ * slot A (after snapshotting slot A to BACKUP). The caller only has to honour
+ * @c result.decision.
  */
 int boot_install_run(const boot_install_io_t *io, const record_store_t *meta_store,
                      boot_install_result_t *result);

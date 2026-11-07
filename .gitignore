@@ -25,3 +25,9 @@ __pycache__/
 *.ota
 firmware/*.ota
 firmware/*.json
+
+# Signing keys: private halves must never enter the repository
+tools/keys/
+tools/keys/*.pem
+tools/keys/*.der
+tools/keys/*.key

@@ -41,5 +41,19 @@ uint32_t ota_service_running_version(void);
 /** State machine inspection for the device-info JSON. */
 uint8_t ota_service_state(void);
 uint8_t ota_service_last_reason(void);
+uint32_t ota_service_received(void);
+uint32_t ota_service_total(void);
+
+/** Drop the current partial transfer (CLI "ota abort"). */
+void ota_service_abort_transfer(void);
+
+/** Clear boot_attempts once the application is up and healthy. */
+void ota_service_confirm_boot(void);
+
+/** Route ESP-AT URCs for BLE disconnects into the receiver. */
+void ota_service_on_ble_disconnect(void);
+
+/** Wipe OTA metadata (factory reset); does not touch slot A. */
+void ota_service_factory_reset(void);
 
 #endif /* OTA_SERVICE_H */

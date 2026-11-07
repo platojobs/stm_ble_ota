@@ -51,6 +51,8 @@ typedef enum {
     STM_FRAME_OTA_ABORT     = 0x13, /* host -> device, no payload             */
     STM_FRAME_OTA_PROGRESS  = 0x14, /* device -> host, ota_progress_payload   */
     STM_FRAME_OTA_RESULT    = 0x15, /* device -> host, ota_progress_payload   */
+    STM_FRAME_OTA_QUERY     = 0x16, /* host -> device, no payload              */
+    STM_FRAME_OTA_INFO      = 0x17, /* device -> host, ota_info_payload        */
 } stm_frame_type_t;
 
 /** OTA transfer states, also encoded in ota_progress_payload_t.state. */
@@ -75,6 +77,7 @@ typedef enum {
     OTA_REASON_TIMEOUT       = 6,
     OTA_REASON_ABORTED       = 7,
     OTA_REASON_BAD_VERSION   = 8,
+    OTA_REASON_BAD_SIGNATURE = 9,
 } ota_reason_t;
 
 typedef struct __attribute__((packed)) {
@@ -88,6 +91,21 @@ typedef struct __attribute__((packed)) {
     uint32_t payload_crc32;
 } stm_frame_header_t;
 
+/**
+ * Canonical byte string covered by the Ed25519 signature (48 bytes). Both the
+ * packer and the bootloader build it with the same little-endian field order,
+ * so the signature authenticates the image digest together with every field
+ * the bootloader acts on.
+ */
+typedef struct __attribute__((packed)) {
+    uint8_t  image_sha256[32];
+    uint32_t image_size;
+    uint32_t version;
+    uint32_t build_id;
+    uint16_t hardware_id;
+    uint16_t reserved;
+} ota_signature_blob_t;
+
 typedef struct __attribute__((packed)) {
     uint32_t image_size;
     uint32_t image_crc32;
@@ -95,6 +113,8 @@ typedef struct __attribute__((packed)) {
     uint32_t build_id;
     uint16_t hardware_id;
     uint16_t reserved;
+    uint8_t  image_sha256[32]; /* SHA-256 of the image bytes                    */
+    uint8_t  signature[64];    /* Ed25519 over ota_signature_blob_t             */
 } ota_begin_payload_t;
 
 typedef struct __attribute__((packed)) {
@@ -110,6 +130,21 @@ typedef struct __attribute__((packed)) {
     uint32_t total;         /* announced image size                            */
     uint32_t crc32;         /* running CRC-32 of accepted bytes                */
 } ota_progress_payload_t;
+
+/** Answer to OTA_QUERY: what the device would resume and how. */
+typedef struct __attribute__((packed)) {
+    uint8_t  state;         /* ota_state_t                                     */
+    uint8_t  reason;        /* ota_reason_t                                    */
+    uint16_t reserved;
+    uint32_t received;      /* valid bytes that survive a reset/reconnect      */
+    uint32_t total;         /* announced image size                            */
+    uint32_t image_crc32;
+    uint32_t version;
+    uint32_t chunk_size;    /* resume granularity (8 KB page)                  */
+    uint32_t chunk_count;   /* valid chunks, 0 when no partial transfer        */
+    uint16_t hardware_id;
+    uint16_t reserved2;
+} ota_info_payload_t;
 
 /** Sensor notification payload (20 bytes, sent on the sensor characteristic). */
 typedef struct __attribute__((packed)) {
@@ -171,5 +206,10 @@ uint32_t stm_frame_build(uint8_t type,
 
 /** Encode 0x00MMmmpp from three decimal components (each 0..255). */
 uint32_t ota_version_pack(uint8_t major, uint8_t minor, uint8_t patch);
+
+/** Fill the canonical signed blob from the descriptor fields. */
+void ota_signature_blob_build(ota_signature_blob_t *blob, const uint8_t *sha256,
+                              uint32_t image_size, uint32_t version,
+                              uint32_t build_id, uint16_t hardware_id);
 
 #endif /* OTA_PROTOCOL_H */

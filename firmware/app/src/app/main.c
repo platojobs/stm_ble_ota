@@ -27,9 +27,11 @@
 #include "ble_service.h"
 #include "ota_service.h"
 #include "host_link.h"
+#include "cli_service.h"
 #include "esp32_at.h"
 #include "mini_json.h"
 #include "config_store.h"
+#include "bsp_watchdog.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -136,6 +138,11 @@ static void on_provision_text(const uint8_t *data, uint32_t length, void *contex
 static void on_host_json(const char *json, void *context)
 {
     (void)context;
+    /* Lines that do not start with '{' are CLI commands. */
+    if (json[0] != '{') {
+        cli_service_handle_line(json, (uint32_t)strlen(json));
+        return;
+    }
     char command[24];
     if (json_get_string(json, "cmd", command, sizeof(command)) != JSON_OK) {
         host_link_send_json("{\"type\":\"error\",\"message\":\"missing cmd\"}");
@@ -191,6 +198,8 @@ static void on_esp_urc(const esp_at_event_t *event, void *context)
         /* The central needs a moment to subscribe before the first notify. */
         g_info_pending = true;
         g_info_due_ms = bsp_time_ms() + 200u;
+    } else if (event->type == ESP_AT_EVT_BLE_DISCONNECTED) {
+        ota_service_on_ble_disconnect();
     }
 }
 
@@ -225,7 +234,13 @@ int main(void)
     host_link_init(on_host_json, on_host_frame, NULL);
     g_led_last_ms = bsp_time_ms();
 
+    /* Bootloader-started IWDG is already running; re-arm it and clear the
+     * boot-attempt counter now that all services are initialised. */
+    bsp_watchdog_init();
+    ota_service_confirm_boot();
+
     for (;;) {
+        bsp_watchdog_feed();
         host_link_poll();
         esp_at_poll(&g_esp);
 

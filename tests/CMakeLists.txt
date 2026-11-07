@@ -21,8 +21,12 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/common)
+set(VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/vendor)
 set(COMMON_SOURCES
     ${COMMON_DIR}/src/crc.c
+    ${COMMON_DIR}/src/sha256.c
+    ${COMMON_DIR}/src/ed25519_verify.c
+    ${VENDOR_DIR}/tweetnacl/tweetnacl.c
     ${COMMON_DIR}/src/mini_json.c
     ${COMMON_DIR}/src/hex_util.c
     ${COMMON_DIR}/src/ota_protocol.c
@@ -32,6 +36,8 @@ set(COMMON_SOURCES
     ${COMMON_DIR}/src/image_check.c
     ${COMMON_DIR}/src/ota_receiver.c
     ${COMMON_DIR}/src/boot_install.c
+    ${COMMON_DIR}/src/boot_policy.c
+    ${COMMON_DIR}/src/cli_parser.c
     ${COMMON_DIR}/src/sensor_filter.c
     ${COMMON_DIR}/src/esp_at_parser.c
 )
@@ -41,11 +47,13 @@ add_executable(unit_tests
     fake_flash.c
     test_common.c
     test_ota_logic.c
+    test_v2_features.c
     test_main.c
 )
 
 target_include_directories(unit_tests PRIVATE
     ${COMMON_DIR}/include
+    ${VENDOR_DIR}/tweetnacl
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -56,3 +64,7 @@ target_compile_options(unit_tests PRIVATE
 
 target_link_options(unit_tests PRIVATE -fsanitize=address,undefined)
 target_link_libraries(unit_tests PRIVATE m)
+
+# Vendored public-domain crypto: compile without project warnings.
+set_source_files_properties(${VENDOR_DIR}/tweetnacl/tweetnacl.c
+    PROPERTIES COMPILE_OPTIONS "-w")
