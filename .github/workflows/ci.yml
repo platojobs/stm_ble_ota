@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    name: Host unit tests (-Werror)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S tests -B build-host -G Ninja -DWERROR=ON
+      - name: Build
+        run: cmake --build build-host
+      - name: Run
+        run: ./build-host/unit_tests
+
+  firmware:
+    name: Firmware build (-Werror)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi cppcheck
+          arm-none-eabi-gcc --version
+          cmake --version
+          cppcheck --version
+      - name: Configure
+        run: >
+          cmake -S . -B build/arm -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-none-eabi.cmake
+          -DCMAKE_BUILD_TYPE=Release
+          -DWERROR=ON
+      - name: Build bootloader and application
+        run: cmake --build build/arm
+      - name: Static analysis
+        run: |
+          cppcheck --enable=warning,performance \
+            --error-exitcode=1 --inline-suppr \
+            --suppress=missingIncludeSystem --suppress=missingInclude \
+            --std=c11 \
+            -I firmware/common/include \
+            -I firmware/app/include \
+            -I firmware/bootloader/include \
+            -I firmware/vendor/stm32c5xx_dfp/Include \
+            -I firmware/vendor/cmsis/Include \
+            firmware/common/src firmware/app/src firmware/bootloader/src
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            build/arm/stm_ble_ota_app.bin
+            build/arm/stm_ble_ota_app.hex
+            build/arm/stm_ble_ota_bootloader.bin
+            build/arm/stm_ble_ota_bootloader.hex
+            build/arm/stm_ble_ota_app.map
+            build/arm/stm_ble_ota_bootloader.map
+          if-no-files-found: error
+
+  release:
+    name: Signed release
+    needs: [host-tests, firmware]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: artifacts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install signing dependency
+        run: python -m pip install 'cryptography>=41.0'
+      - name: Sign application package
+        env:
+          OTA_SIGNING_KEY_B64: ${{ secrets.OTA_SIGNING_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OTA_SIGNING_KEY_B64}" ]; then
+            echo "::error::secret OTA_SIGNING_KEY_B64 is required for a signed release"
+            exit 1
+          fi
+          echo "${OTA_SIGNING_KEY_B64}" | base64 -d > "${RUNNER_TEMP}/ota_signing_key.pem"
+          VERSION="${GITHUB_REF_NAME#v}"
+          python tools/firmware_tool.py pack artifacts/stm_ble_ota_app.bin \
+            --version "${VERSION}" --hw 0x0050 --build-id "${GITHUB_RUN_NUMBER}" \
+            --key "${RUNNER_TEMP}/ota_signing_key.pem" \
+            -o "artifacts/stm_ble_ota_app-${VERSION}.ota"
+          python tools/firmware_tool.py inspect "artifacts/stm_ble_ota_app-${VERSION}.ota"
+          rm -f "${RUNNER_TEMP}/ota_signing_key.pem"
+          cd artifacts
+          sha256sum stm_ble_ota_app.bin "stm_ble_ota_app-${VERSION}.ota" \
+            stm_ble_ota_bootloader.bin > SHA256SUMS
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/stm_ble_ota_app.bin
+            artifacts/stm_ble_ota_app-*.ota
+            artifacts/stm_ble_ota_bootloader.bin
+            artifacts/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true
