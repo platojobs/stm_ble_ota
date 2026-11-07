@@ -14,6 +14,8 @@
  *   sensor
  *   ota start | ota status | ota abort
  *   log
+ *   device
+ *   selftest
  *   factory reset
  *
  * Unknown or malformed input yields CLI_UNKNOWN (the caller prints usage).
@@ -37,6 +39,8 @@ typedef enum {
     CLI_OTA_STATUS,
     CLI_OTA_ABORT,
     CLI_LOG,
+    CLI_DEVICE,
+    CLI_SELFTEST,
     CLI_FACTORY_RESET,
     CLI_UNKNOWN,
     CLI_TOO_LONG,

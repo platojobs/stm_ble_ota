@@ -41,6 +41,8 @@ void ble_service_on_urc(const esp_at_event_t *event, void *context);
 
 bool ble_service_connected(void);
 uint8_t ble_service_connection(void);
+/** True when the GATT server was configured and advertising started. */
+bool ble_service_ready(void);
 
 /** Send a JSON document on the device-info characteristic. */
 int ble_service_notify_info(const char *json);

@@ -66,6 +66,9 @@ TEST_CASE(cli_parser_recognises_commands)
     ASSERT_EQ(cli_parse("ota abort", 9), CLI_OTA_ABORT);
     ASSERT_EQ(cli_parse("log", 3), CLI_LOG);
     ASSERT_EQ(cli_parse("faults", 6), CLI_LOG);
+    ASSERT_EQ(cli_parse("device", 6), CLI_DEVICE);
+    ASSERT_EQ(cli_parse("selftest", 8), CLI_SELFTEST);
+    ASSERT_EQ(cli_parse("self-test", 9), CLI_SELFTEST);
     ASSERT_EQ(cli_parse("factory reset", 13), CLI_FACTORY_RESET);
 }
 

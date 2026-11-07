@@ -56,7 +56,7 @@ Device to host:
 
 | Message | Example |
 | --- | --- |
-| info | `{"type":"info","name":"stm-ble-ota","version":"0.2.0","version_raw":512,"hardware_id":80,"ota_state":0,"last_reason":0,"fault_count":0,"last_err":0,"last_err_name":"OK","ble_connected":false,"wifi_connected":false}` |
+| info | `{"type":"info","name":"stm-ble-ota","serial":"C562-123456789ABC","version":"0.2.0","version_raw":512,"hardware_id":80,"provisioned":true,"ota_state":0,"last_reason":0,"fault_count":0,"last_err":0,"last_err_name":"OK","ble_connected":false,"wifi_connected":false}` |
 | wifi | `{"type":"wifi","ok":true,"connected":true,"ssid":"MyNet","ip":"192.168.1.42","provisioned":true}` |
 | wifi error | `{"type":"wifi","ok":false,"error":"wifi connection failed"}` |
 | sensor | `{"type":"sensor","valid":7,"uptime_ms":12345,"temperature_centi":2412,"humidity_centi":5120,"light_mv":1870}` |

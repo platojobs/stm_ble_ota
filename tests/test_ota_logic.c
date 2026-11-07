@@ -12,6 +12,7 @@
 #include "boot_install.h"
 #include "image_check.h"
 #include "sha256.h"
+#include "device_info.h"
 
 #include <string.h>
 
@@ -442,6 +443,80 @@ TEST_CASE(wifi_credentials_validate_lengths_and_chars)
     ASSERT_FALSE(wifi_credentials_valid("lab", "pa\nss"));
     ASSERT_FALSE(wifi_credentials_valid("lab", "p\x01ss"));
     ASSERT_TRUE(wifi_credentials_valid("lab 2.4G", "p@ss!#$%&'()*+,-./"));
+}
+
+/* --- device identity ----------------------------------------------------- */
+
+TEST_CASE(device_info_serial_from_uid)
+{
+    const uint8_t uid[6] = { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC };
+    char serial[DEVICE_SERIAL_MAX + 1u];
+    device_info_build_serial(uid, serial);
+    ASSERT_STREQ(serial, "C562-123456789ABC");
+    ASSERT_EQ((uint32_t)strlen(serial), 17u);
+
+    device_info_build_serial(NULL, serial);
+    ASSERT_EQ(serial[0], '\0');
+}
+
+TEST_CASE(device_info_validation_and_roundtrip)
+{
+    device_info_t info;
+    device_info_defaults(&info, 0x0050u);
+    ASSERT_FALSE(device_info_valid(&info)); /* no serial yet */
+
+    strcpy(info.serial, "C562-123456789ABC");
+    info.provisioned = true;
+    ASSERT_TRUE(device_info_valid(&info));
+
+    info.hardware_id = 0u;
+    ASSERT_FALSE(device_info_valid(&info));
+    info.hardware_id = 0x0050u;
+
+    strcpy(info.serial, "bad serial");
+    ASSERT_FALSE(device_info_valid(&info));
+    strcpy(info.serial, "SN_0001-A");
+    ASSERT_TRUE(device_info_valid(&info));
+
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_DEVICE_PAGE0,
+                                FLASH_DEVICE_PAGE1,
+                                (uint16_t)sizeof(device_info_record_t)), 0);
+    ASSERT_EQ(device_info_save(&store, &info), 0);
+
+    device_info_t loaded;
+    ASSERT_EQ(device_info_load(&store, &loaded), 0);
+    ASSERT_STREQ(loaded.serial, info.serial);
+    ASSERT_EQ(loaded.hardware_id, info.hardware_id);
+    ASSERT_TRUE(loaded.provisioned);
+}
+
+TEST_CASE(device_info_corrupt_record_is_rejected)
+{
+    device_info_t info;
+    device_info_defaults(&info, 0x0050u);
+    strcpy(info.serial, "C562-123456789ABC");
+
+    flash_setup();
+    record_flash_if_t iface = make_record_if();
+    record_store_t store;
+    ASSERT_EQ(record_store_init(&store, &iface, FLASH_DEVICE_PAGE0,
+                                FLASH_DEVICE_PAGE1,
+                                (uint16_t)sizeof(device_info_record_t)), 0);
+    ASSERT_EQ(device_info_save(&store, &info), 0);
+
+    record_info_t record;
+    uint8_t buffer[256];
+    ASSERT_EQ(record_store_load(&store, buffer, sizeof(buffer), &record), 0);
+    uint8_t byte = 0u;
+    ASSERT_EQ(fake_flash_read(&g_flash, record.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+    byte = (uint8_t)(byte ^ 0x40u);
+    ASSERT_EQ(fake_flash_program(&g_flash, record.page + RECORD_HEADER_LEN, &byte, 1u), 0);
+
+    device_info_t loaded;
+    ASSERT_EQ(device_info_load(&store, &loaded), -1);
 }
 
 /* --- metadata ------------------------------------------------------------ */
@@ -1082,6 +1157,9 @@ void run_ota_logic_tests(void)
     RUN_TEST(config_store_rejects_empty);
     RUN_TEST(config_store_corrupt_falls_back_to_unprovisioned);
     RUN_TEST(wifi_credentials_validate_lengths_and_chars);
+    RUN_TEST(device_info_serial_from_uid);
+    RUN_TEST(device_info_validation_and_roundtrip);
+    RUN_TEST(device_info_corrupt_record_is_rejected);
     RUN_TEST(ota_metadata_roundtrip);
     RUN_TEST(ota_metadata_corrupt_falls_back_to_defaults);
     RUN_TEST(image_validate_accepts_good_image);

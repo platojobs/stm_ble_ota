@@ -84,7 +84,8 @@ PA2/PA3（见 KNOWN_ISSUES）。
 | Slot B（OTA 暂存） | `0x0804_0000` | 96 KB | 32–43 | 下载的新镜像 |
 | OTA 元数据 | `0x0805_8000` | 16 KB | 44–45 | 双页交替记录 |
 | WiFi 配置 | `0x0805_C000` | 16 KB | 46–47 | 双页交替记录 |
-| Bank2 预留 | `0x0806_0000` | 128 KB | 48–63 | 未使用 |
+| 设备信息 | `0x0806_0000` | 16 KB | 48–49 | 序列号 + 硬件 ID，双页交替记录 |
+| Bank2 预留 | `0x0806_4000` | 96 KB | 50–63 | 未使用 |
 
 启动流程：
 
@@ -299,7 +300,9 @@ ota start         中止旧会话并接受新会话
 ota status        状态、已接收字节、原因码与共享 err_code
 ota abort         中止当前会话
 log               最近故障环形缓冲（错误码、名称、detail）
-factory reset     擦除配置与元数据并复位
+device            序列号、硬件 ID、固件版本、产线状态
+selftest          Flash / I2C / ADC / BLE 产测自检
+factory reset     擦除配置与元数据并复位（保留设备信息）
 ```
 
 应答为每行一个 JSON 对象。`ota status` 与 `log` 使用

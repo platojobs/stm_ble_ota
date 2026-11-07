@@ -90,6 +90,13 @@ cli_command_t cli_parse(const char *line, uint32_t length)
     if (strcmp(buf, "log") == 0 || strcmp(buf, "faults") == 0) {
         return CLI_LOG;
     }
+    if (strcmp(buf, "device") == 0 || strcmp(buf, "info") == 0) {
+        return CLI_DEVICE;
+    }
+    if (strcmp(buf, "selftest") == 0 || strcmp(buf, "self-test") == 0 ||
+        strcmp(buf, "test") == 0) {
+        return CLI_SELFTEST;
+    }
     if (strcmp(buf, "factory reset") == 0 || strcmp(buf, "factory") == 0) {
         return CLI_FACTORY_RESET;
     }

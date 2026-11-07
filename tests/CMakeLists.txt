@@ -45,6 +45,7 @@ set(COMMON_SOURCES
     ${COMMON_DIR}/src/esp_at_parser.c
     ${COMMON_DIR}/src/err_code.c
     ${COMMON_DIR}/src/error_log.c
+    ${COMMON_DIR}/src/device_info.c
 )
 
 add_executable(unit_tests

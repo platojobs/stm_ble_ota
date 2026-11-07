@@ -23,12 +23,16 @@ no board available while it was written.
 | Ed25519 verification on target (TweetNaCl) | vectors pass on host with SHA/Ed25519 tests; **not verified on hardware** |
 | IWDG timeout, window and reset source handling | register sequence derived from RM0522; **not verified** |
 | Boot confirmation, three-failure rollback and backup restore | logic tested on host; **not verified on hardware** |
+| Device serial derived from the MCU UID and persisted | formatting/round-trip tested on host; UID register read **not verified on hardware** |
+| Production self-test (`selftest`: flash/I2C/ADC/BLE) | decision logic implemented; **not executed on hardware** |
 
-Host-side logic tests (551 assertions) cover CRC, frame parsing/resync, record
-store torn-write recovery, image validation (size, vectors, CRC, SHA-256,
-Ed25519), OTA state machine and resume/truncation, install/copy decisions,
-signature failure, downgrade rejection, CLI parsing and rollback policy. They
-use an in-memory fake flash and do not model real flash timing.
+Host-side logic tests (1,574 assertions) cover CRC, frame parsing/resync,
+record store torn-write recovery, image validation (size, vectors, CRC,
+SHA-256, Ed25519), OTA state machine and resume/truncation, install/copy
+decisions, signature failure, downgrade rejection, CLI parsing, rollback
+policy, error codes/fault log, credential bounds, device identity and
+power-loss fallbacks. They use an in-memory fake flash and do not model real
+flash timing.
 
 ## 2. Clock and register-level assumptions
 
@@ -128,8 +132,8 @@ use an in-memory fake flash and do not model real flash timing.
   frame, 27 notifications each under the default 20-byte MTU, so a full image
   over BLE is **slow and not timed on hardware**.
 - `PC13` button is initialised but unused; factory reset is available through
-  the CLI (`{"cmd":"factory","op":"reset"}` plus a confirmation), not as a
-  button gesture.
+  the CLI (`factory reset`), not as a button gesture. Device identity (serial
+  and hardware id) deliberately survives factory reset.
 
 ## 6. Documentation consistency
 

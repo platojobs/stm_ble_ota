@@ -86,7 +86,8 @@ Device: 512 KB program flash, two 256 KB banks, 8 KB erase pages.
 | Slot B (OTA staging) | `0x0804_0000` | 96 KB | 32–43 | downloaded image |
 | OTA metadata | `0x0805_8000` | 16 KB | 44–45 | two alternating records |
 | WiFi config | `0x0805_C000` | 16 KB | 46–47 | two alternating records |
-| Bank 2 reserved | `0x0806_0000` | 128 KB | 48–63 | unused |
+| Device info | `0x0806_0000` | 16 KB | 48–49 | serial + hardware id, two alternating records |
+| Bank 2 reserved | `0x0806_4000` | 96 KB | 50–63 | unused |
 
 Boot flow:
 
@@ -317,7 +318,9 @@ ota start             abort any stale session, accept a new one
 ota status            state, received bytes, reason + shared err_code
 ota abort             abort the session
 log                   recent fault ring buffer (code, name, detail)
-factory reset         erase config+metadata and reset
+device                serial, hardware id, firmware version, factory state
+selftest              flash / I2C / ADC / BLE production self-test
+factory reset         erase config+metadata and reset (keeps device info)
 ```
 
 The answers are one JSON object per line. `ota status` and `log` also expose

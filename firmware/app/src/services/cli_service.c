@@ -10,6 +10,8 @@
 #include "wifi_service.h"
 #include "sensor_service.h"
 #include "ble_service.h"
+#include "device_service.h"
+#include "selftest_service.h"
 #include "fault_service.h"
 #include "bsp_time.h"
 #include "stm32c562xx.h"
@@ -22,7 +24,8 @@ static void usage(void)
     host_link_send_json(
         "{\"type\":\"cli\",\"ok\":false,"
         "\"commands\":[\"help\",\"version\",\"part\",\"wifi\",\"sensor\","
-        "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"factory reset\"]}");
+        "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"device\","
+        "\"selftest\",\"factory reset\"]}");
 }
 
 static void cmd_help(void)
@@ -134,6 +137,41 @@ static void cmd_log(void)
     host_link_send_json(json);
 }
 
+static void cmd_device(void)
+{
+    const device_info_t *info = device_service_info();
+    uint32_t version = ota_service_running_version();
+    char json[320];
+    (void)snprintf(json, sizeof(json),
+                   "{\"type\":\"cli\",\"cmd\":\"device\",\"serial\":\"%s\","
+                   "\"hardware_id\":%u,\"firmware\":\"%u.%u.%u\","
+                   "\"version_raw\":%u,\"provisioned\":%s}",
+                   info->serial, (unsigned)info->hardware_id,
+                   (unsigned)((version >> 16) & 0xFFu),
+                   (unsigned)((version >> 8) & 0xFFu),
+                   (unsigned)(version & 0xFFu), (unsigned)version,
+                   info->provisioned ? "true" : "false");
+    host_link_send_json(json);
+}
+
+static void cmd_selftest(void)
+{
+    selftest_result_t result;
+    selftest_service_run(&result);
+    char json[240];
+    (void)snprintf(json, sizeof(json),
+                   "{\"type\":\"cli\",\"cmd\":\"selftest\",\"ok\":%s,"
+                   "\"flash\":%s,\"i2c\":%s,\"adc\":%s,\"ble\":%s,"
+                   "\"failed_mask\":%u}",
+                   result.all_ok ? "true" : "false",
+                   result.flash_ok ? "true" : "false",
+                   result.i2c_ok ? "true" : "false",
+                   result.adc_ok ? "true" : "false",
+                   result.ble_ok ? "true" : "false",
+                   (unsigned)result.failed_mask);
+    host_link_send_json(json);
+}
+
 static void cmd_factory_reset(void)
 {
     host_link_send_json(
@@ -163,6 +201,8 @@ void cli_service_handle_line(const char *line, uint32_t length)
     case CLI_OTA_STATUS:    cmd_ota_status(); break;
     case CLI_OTA_ABORT:     cmd_ota_abort(); break;
     case CLI_LOG:           cmd_log(); break;
+    case CLI_DEVICE:        cmd_device(); break;
+    case CLI_SELFTEST:      cmd_selftest(); break;
     case CLI_FACTORY_RESET: cmd_factory_reset(); break;
     case CLI_TOO_LONG:
         host_link_send_json(

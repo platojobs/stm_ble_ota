@@ -22,6 +22,7 @@ static void *g_provision_context;
 static ble_frame_handler_t g_ota_handler;
 static void *g_ota_context;
 static bool g_connected;
+static bool g_ready;
 static uint8_t g_conn;
 
 static int command(const char *cmd, uint32_t timeout_ms)
@@ -33,6 +34,7 @@ int ble_service_init(esp_at_t *at)
 {
     g_at = at;
     g_connected = false;
+    g_ready = false;
     g_conn = 0u;
 
     /* The AT link itself is verified by wifi_service_init() before this runs. */
@@ -45,7 +47,8 @@ int ble_service_init(esp_at_t *at)
     (void)command("AT+BLEADVPARAM=50,150,0,0,7,0,0,0", ESP_COMMAND_TIMEOUT_MS);
     (void)command("AT+BLEADVDATA=\"" BLE_ADV_DATA "\"",
                   ESP_COMMAND_TIMEOUT_MS);
-    return command("AT+BLEADVSTART", ESP_COMMAND_TIMEOUT_MS) == ESP_AT_EXEC_OK ? 0 : -1;
+    g_ready = command("AT+BLEADVSTART", ESP_COMMAND_TIMEOUT_MS) == ESP_AT_EXEC_OK;
+    return g_ready ? 0 : -1;
 }
 
 void ble_service_set_provision_handler(ble_text_handler_t handler, void *context)
@@ -104,6 +107,11 @@ bool ble_service_connected(void)
 uint8_t ble_service_connection(void)
 {
     return g_conn;
+}
+
+bool ble_service_ready(void)
+{
+    return g_ready;
 }
 
 static int notify(uint8_t characteristic, const void *payload, uint32_t length)

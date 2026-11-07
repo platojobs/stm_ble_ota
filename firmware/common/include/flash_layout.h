@@ -27,9 +27,11 @@
  * costs 96 KB of the 512 KB part but keeps the "old firmware stays runnable"
  * guarantee without external memory.
  *
- * Metadata and configuration each occupy two 8 KB pages, used as two
- * alternating records (one record per page) so a power loss can never destroy
- * the last known-good record.
+ * Metadata, configuration and device identity each occupy two 8 KB pages,
+ * used as two alternating records (one record per page) so a power loss can
+ * never destroy the last known-good record. All three stores live in bank 2,
+ * which the application may erase while executing from bank 1. The device
+ * record survives factory reset, so a unit keeps its serial for life.
  */
 
 #ifndef FLASH_LAYOUT_H
@@ -81,6 +83,13 @@
 #define FLASH_BANK2_RESERVED_START  0x08060000u
 #define FLASH_BANK2_RESERVED_SIZE   0x20000u   /* 128 KB, pages 48..63              */
 
+/* Device identity lives in bank 2, next to the other app-writable records:
+ * the application executes from bank 1, so erasing these pages never stalls
+ * instruction fetch. Pages 50..63 stay reserved. */
+#define FLASH_DEVICE_PAGE0          0x08060000u /* page 48                          */
+#define FLASH_DEVICE_PAGE1          0x08062000u /* page 49                          */
+#define FLASH_DEVICE_STORE_SIZE     (2u * FLASH_PAGE_SIZE)
+
 /* Maximum application image accepted by the OTA downloader. */
 #define FLASH_IMAGE_MAX_SIZE        FLASH_SLOT_A_SIZE
 
@@ -109,6 +118,12 @@
 #if (FLASH_BANK1_RESERVED_START + FLASH_BANK1_RESERVED_SIZE) != \
     (FLASH_BOOT_START + 0x40000u)
 #error "Bank 1 reserved area must end at the bank boundary"
+#endif
+#if (FLASH_DEVICE_PAGE0 != FLASH_BANK2_RESERVED_START) || \
+    (FLASH_DEVICE_PAGE1 != (FLASH_DEVICE_PAGE0 + FLASH_PAGE_SIZE)) || \
+    (FLASH_DEVICE_PAGE1 + FLASH_PAGE_SIZE > \
+     (FLASH_BANK2_RESERVED_START + FLASH_BANK2_RESERVED_SIZE))
+#error "Device-info store must fit in the bank 2 reserved area"
 #endif
 #if (FLASH_SLOT_B_START + FLASH_SLOT_B_SIZE) != FLASH_META_PAGE0
 #error "Slot B layout mismatch"
