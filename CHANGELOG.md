@@ -33,6 +33,12 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
 - Version encoding is `0x00MMmmpp`; `APP_VERSION` is `0x00000200` for 0.2.0.
 - Host tests: 551 assertions, including resume, signature failure and rollback.
 
+### Notes
+
+- Signing keys are generated locally (`tools/keys/` is git-ignored); private
+  keys are never committed. Release builds supply `OTA_SIGNING_KEY` from CI.
+- Bootloader 24.6 KB / 32 KB, app 28.8 KB / 96 KB; both fit with margin.
+
 ## [0.1.0] - 2026-11-07
 
 Initial reference implementation. Not validated on hardware; see
