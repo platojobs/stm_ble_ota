@@ -64,6 +64,8 @@ TEST_CASE(cli_parser_recognises_commands)
     ASSERT_EQ(cli_parse("ota start", 9), CLI_OTA_START);
     ASSERT_EQ(cli_parse("ota status", 10), CLI_OTA_STATUS);
     ASSERT_EQ(cli_parse("ota abort", 9), CLI_OTA_ABORT);
+    ASSERT_EQ(cli_parse("log", 3), CLI_LOG);
+    ASSERT_EQ(cli_parse("faults", 6), CLI_LOG);
     ASSERT_EQ(cli_parse("factory reset", 13), CLI_FACTORY_RESET);
 }
 

@@ -8,6 +8,7 @@
  */
 
 #include "ota_service.h"
+#include "fault_service.h"
 #include "ota_receiver.h"
 #include "ota_metadata.h"
 #include "record_store.h"
@@ -114,6 +115,8 @@ static void handle_frame(const stm_frame_t *frame, void *context)
         memcpy(&begin, frame->payload, sizeof(begin));
         reason = ota_receiver_begin(&g_receiver, &begin, now);
         if (reason != OTA_REASON_NONE) {
+            fault_service_raise(err_code_from_ota_reason(reason),
+                                g_receiver.received);
             send_progress(OTA_STATE_ERROR, reason, g_receiver.received,
                           g_receiver.image_size, g_receiver.running_crc);
         }
@@ -123,6 +126,8 @@ static void handle_frame(const stm_frame_t *frame, void *context)
         reason = ota_receiver_data(&g_receiver, frame->offset, frame->payload,
                                    frame->payload_len, now);
         if (reason != OTA_REASON_NONE) {
+            fault_service_raise(err_code_from_ota_reason(reason),
+                                g_receiver.received);
             send_progress(OTA_STATE_ERROR, reason, g_receiver.received,
                           g_receiver.image_size, g_receiver.running_crc);
         }
@@ -136,6 +141,10 @@ static void handle_frame(const stm_frame_t *frame, void *context)
         ota_end_payload_t end;
         memcpy(&end, frame->payload, sizeof(end));
         reason = ota_receiver_end(&g_receiver, &end, now);
+        if (reason != OTA_REASON_NONE) {
+            fault_service_raise(err_code_from_ota_reason(reason),
+                                g_receiver.received);
+        }
         send_progress(g_receiver.state, reason, g_receiver.received,
                       g_receiver.image_size, g_receiver.running_crc);
         if (reason == OTA_REASON_NONE) {

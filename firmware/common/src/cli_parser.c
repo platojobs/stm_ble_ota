@@ -87,6 +87,9 @@ cli_command_t cli_parse(const char *line, uint32_t length)
     if (strcmp(buf, "ota abort") == 0) {
         return CLI_OTA_ABORT;
     }
+    if (strcmp(buf, "log") == 0 || strcmp(buf, "faults") == 0) {
+        return CLI_LOG;
+    }
     if (strcmp(buf, "factory reset") == 0 || strcmp(buf, "factory") == 0) {
         return CLI_FACTORY_RESET;
     }

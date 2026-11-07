@@ -12,6 +12,7 @@
 #include "bsp_flash.h"
 #include "bsp_time.h"
 #include "flash_layout.h"
+#include "fault_service.h"
 #include "app_config.h"
 
 #include <stdio.h>
@@ -180,9 +181,11 @@ int wifi_service_init(esp_at_t *at)
     (void)wifi_config_load(&g_store, &g_config);
 
     if (esp_wait_ready() != 0) {
+        fault_service_raise(ERR_CODE_AT_TIMEOUT, ESP_BOOT_ATTEMPTS);
         return -1;
     }
     if (esp_configure() != 0) {
+        fault_service_raise(ERR_CODE_AT_ERROR, 0u);
         return -1;
     }
     g_esp_ready = true;
@@ -205,16 +208,19 @@ static int handle_set(const char *json)
 
     if (json_get_string(json, "ssid", ssid, sizeof(ssid)) != JSON_OK ||
         ssid[0] == '\0') {
+        fault_service_raise(ERR_CODE_INVALID_ARG, 0u);
         reply_error("missing or invalid ssid");
         return -1;
     }
     if (json_get_string(json, "password", password, sizeof(password)) != JSON_OK &&
         json_get_string(json, "pass", password, sizeof(password)) != JSON_OK) {
+        fault_service_raise(ERR_CODE_INVALID_ARG, 1u);
         reply_error("missing password");
         return -1;
     }
 
     if (connect_wifi(ssid, password) != 0) {
+        fault_service_raise(ERR_CODE_WIFI_CONNECT_FAILED, 0u);
         reply_error("wifi connection failed");
         return -1;
     }
@@ -227,6 +233,7 @@ static int handle_set(const char *json)
     next.provisioned = 1u;
 
     if (wifi_config_save(&g_store, &next) != 0) {
+        fault_service_raise(ERR_CODE_FLASH_PROGRAM, 0u);
         reply_error("could not persist credentials");
         return -1;
     }
@@ -258,6 +265,7 @@ int wifi_service_handle_command(const char *json, uint32_t length)
         return -1;
     }
     if (g_at == NULL || !g_esp_ready) {
+        fault_service_raise(ERR_CODE_AT_ERROR, 1u);
         reply_error("esp32 not ready");
         return -1;
     }

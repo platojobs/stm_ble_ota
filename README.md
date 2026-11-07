@@ -307,20 +307,25 @@ One JSON object per line; the command is case-insensitive and extra spaces are
 ignored. Unknown or malformed input answers with an error and never wedges the
 parser.
 
-```bash
-{"cmd":"version"}       # firmware version, build id, hardware id
-{"cmd":"partition"}     # slot A/B sizes, metadata state, attempts
-{"cmd":"wifi"}          # link state, SSID, IP
-{"cmd":"sensor"}        # latest filtered temperature/humidity/light
-{"cmd":"ota","op":"start"}   # abort any stale session, accept a new one
-{"cmd":"ota","op":"status"}  # state, received bytes, last reason
-{"cmd":"ota","op":"abort"}   # abort the session
-{"cmd":"factory","op":"reset"}        # erase config+metadata and reset
-{"cmd":"factory","op":"confirm"}      # required follow-up to factory reset
+```text
+help                  list commands
+version               firmware version, build id, hardware id
+part                  slot A/B sizes, metadata state, attempts
+wifi                  link state, SSID, IP
+sensor                latest filtered temperature/humidity/light
+ota start             abort any stale session, accept a new one
+ota status            state, received bytes, reason + shared err_code
+ota abort             abort the session
+log                   recent fault ring buffer (code, name, detail)
+factory reset         erase config+metadata and reset
 ```
 
+The answers are one JSON object per line. `ota status` and `log` also expose
+the shared codes documented in [docs/error_codes.md](docs/error_codes.md);
+the BLE info characteristic reports `fault_count` / `last_err` as well.
+
 The same commands are available from `tools/ota_host.py` (`version`,
-`partition`, `sensor`, `factory reset`, ...) and the firmware answers over the
+`part`, `sensor`, `factory reset`, ...) and the firmware answers over the
 VCP.
 
 ## Host tools

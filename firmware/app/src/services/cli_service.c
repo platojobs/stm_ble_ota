@@ -10,6 +10,7 @@
 #include "wifi_service.h"
 #include "sensor_service.h"
 #include "ble_service.h"
+#include "fault_service.h"
 #include "bsp_time.h"
 #include "stm32c562xx.h"
 
@@ -21,7 +22,7 @@ static void usage(void)
     host_link_send_json(
         "{\"type\":\"cli\",\"ok\":false,"
         "\"commands\":[\"help\",\"version\",\"part\",\"wifi\",\"sensor\","
-        "\"ota start\",\"ota status\",\"ota abort\",\"factory reset\"]}");
+        "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"factory reset\"]}");
 }
 
 static void cmd_help(void)
@@ -122,6 +123,17 @@ static void cmd_ota_abort(void)
         "{\"type\":\"cli\",\"cmd\":\"ota\",\"action\":\"abort\",\"ok\":true}");
 }
 
+static void cmd_log(void)
+{
+    char json[850];
+    if (fault_service_json(json, sizeof(json)) == 0u) {
+        host_link_send_json(
+            "{\"type\":\"cli\",\"ok\":false,\"error\":\"log buffer too small\"}");
+        return;
+    }
+    host_link_send_json(json);
+}
+
 static void cmd_factory_reset(void)
 {
     host_link_send_json(
@@ -150,6 +162,7 @@ void cli_service_handle_line(const char *line, uint32_t length)
     case CLI_OTA_START:     cmd_ota_start(); break;
     case CLI_OTA_STATUS:    cmd_ota_status(); break;
     case CLI_OTA_ABORT:     cmd_ota_abort(); break;
+    case CLI_LOG:           cmd_log(); break;
     case CLI_FACTORY_RESET: cmd_factory_reset(); break;
     case CLI_TOO_LONG:
         host_link_send_json(

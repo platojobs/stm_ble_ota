@@ -289,19 +289,24 @@ STM32_Programmer_CLI -c port=SWD -e all
 每行一个 JSON 对象；命令大小写不敏感、多余空格会被忽略，未知或格式错误
 输入会返回错误而不会卡死解析器。
 
-```bash
-{"cmd":"version"}       # 固件版本、build id、硬件 ID
-{"cmd":"partition"}     # slot A/B 大小、元数据状态、尝试次数
-{"cmd":"wifi"}          # 链路状态、SSID、IP
-{"cmd":"sensor"}        # 最新的温湿度/光照滤波值
-{"cmd":"ota","op":"start"}   # 中止旧会话并接受新会话
-{"cmd":"ota","op":"status"}  # 状态、已接收字节、最近原因码
-{"cmd":"ota","op":"abort"}   # 中止当前会话
-{"cmd":"factory","op":"reset"}        # 擦除配置与元数据并复位
-{"cmd":"factory","op":"confirm"}      # 恢复出厂的二次确认
+```text
+help              列出命令
+version           固件版本、build id、硬件 ID
+part              slot A/B 大小、元数据状态、尝试次数
+wifi              链路状态、SSID、IP
+sensor            最新的温湿度/光照滤波值
+ota start         中止旧会话并接受新会话
+ota status        状态、已接收字节、原因码与共享 err_code
+ota abort         中止当前会话
+log               最近故障环形缓冲（错误码、名称、detail）
+factory reset     擦除配置与元数据并复位
 ```
 
-`tools/ota_host.py`（`version`、`partition`、`sensor`、`factory reset` 等）
+应答为每行一个 JSON 对象。`ota status` 与 `log` 使用
+[docs/error_codes.md](docs/error_codes.md) 中的共享错误码；BLE info 特征
+同时上报 `fault_count` / `last_err`。
+
+`tools/ota_host.py`（`version`、`part`、`sensor`、`factory reset` 等）
 通过 VCP 提供同样的命令。
 
 ## 上位机工具

@@ -16,6 +16,7 @@
 #include "bsp_adc.h"
 #include "bsp_time.h"
 #include "bsp_i2c.h"
+#include "fault_service.h"
 #include "app_config.h"
 
 #include <string.h>
@@ -35,6 +36,8 @@ static sensor_report_cb_t g_report_cb;
 static void *g_report_context;
 static uint32_t g_next_sample_ms;
 static bool g_initialized;
+static bool g_i2c_fault;
+static bool g_adc_fault;
 
 void sensor_service_init(void)
 {
@@ -68,6 +71,7 @@ static void sample_once(uint32_t now_ms)
     uint8_t valid = 0u;
 
     if (sht30_read(&temperature_centi, &humidity_centi) == 0) {
+        g_i2c_fault = false;
         float filtered_temp = ema_filter_update(&g_temp_filter,
                                                (float)temperature_centi / 100.0f);
         float filtered_hum = ema_filter_update(&g_hum_filter,
@@ -75,12 +79,20 @@ static void sample_once(uint32_t now_ms)
         g_last.temperature_centi = (int32_t)(filtered_temp * 100.0f);
         g_last.humidity_centi = (int32_t)(filtered_hum * 100.0f);
         valid |= 0x03u; /* temperature + humidity */
+    } else if (!g_i2c_fault) {
+        /* Log the start of a fault episode, not every subsequent second. */
+        g_i2c_fault = true;
+        fault_service_raise(ERR_CODE_I2C_ERROR, 0u);
     }
 
     if (bsp_adc_read_mv(&light_mv) == 0) {
+        g_adc_fault = false;
         moving_average_add(&g_light_average, (float)light_mv);
         g_last.light_mv = (uint16_t)moving_average_value(&g_light_average);
         valid |= 0x04u;
+    } else if (!g_adc_fault) {
+        g_adc_fault = true;
+        fault_service_raise(ERR_CODE_SENSOR_RANGE, 0u);
     }
 
     g_last.valid_mask = valid;

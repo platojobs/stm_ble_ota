@@ -20,6 +20,7 @@ add_executable(stm_ble_ota_app
     src/services/ble_service.c
     src/services/ota_service.c
     src/services/cli_service.c
+    src/services/fault_service.c
     ${CMAKE_SOURCE_DIR}/firmware/common/src/syscalls.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/startup_stm32c562xx.c
     ${CMAKE_SOURCE_DIR}/firmware/vendor/stm32c5xx_dfp/Source/system_stm32c5xx.c

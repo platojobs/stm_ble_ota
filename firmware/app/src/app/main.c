@@ -28,6 +28,7 @@
 #include "ota_service.h"
 #include "host_link.h"
 #include "cli_service.h"
+#include "fault_service.h"
 #include "esp32_at.h"
 #include "mini_json.h"
 #include "config_store.h"
@@ -50,21 +51,26 @@ static void build_info_json(char *out, size_t out_size)
     uint8_t major = (uint8_t)((version >> 16) & 0xFFu);
     uint8_t minor = (uint8_t)((version >> 8) & 0xFFu);
     uint8_t patch = (uint8_t)(version & 0xFFu);
+    err_code_t last_err = fault_service_last_code();
 
     (void)snprintf(out, out_size,
                    "{\"type\":\"info\",\"name\":\"%s\",\"version\":\"%u.%u.%u\","
                    "\"version_raw\":%u,\"hardware_id\":%u,\"ota_state\":%u,"
-                   "\"last_reason\":%u,\"ble_connected\":%s,\"wifi_connected\":%s}",
+                   "\"last_reason\":%u,\"fault_count\":%u,"
+                   "\"last_err\":%u,\"last_err_name\":\"%s\","
+                   "\"ble_connected\":%s,\"wifi_connected\":%s}",
                    APP_NAME, (unsigned)major, (unsigned)minor, (unsigned)patch,
                    (unsigned)version, (unsigned)APP_HARDWARE_ID,
                    (unsigned)ota_service_state(), (unsigned)ota_service_last_reason(),
+                   (unsigned)fault_service_count(), (unsigned)last_err,
+                   err_code_name(last_err),
                    ble_service_connected() ? "true" : "false",
                    wifi_service_connected() ? "true" : "false");
 }
 
 static void send_info_json(void)
 {
-    char json[220];
+    char json[320];
     build_info_json(json, sizeof(json));
     host_link_send_json(json);
     if (ble_service_connected()) {
@@ -211,6 +217,7 @@ int main(void)
     bsp_uart_init();
 
     esp_at_init(&g_esp, BSP_UART_ESP, on_esp_urc, NULL);
+    fault_service_init();
 
     if (ota_service_init() != 0) {
         for (;;) {

@@ -99,6 +99,7 @@ add_library(firmware_common STATIC
     firmware/common/src/esp_at_parser.c
     firmware/common/src/hex_util.c
     firmware/common/src/err_code.c
+    firmware/common/src/error_log.c
 )
 target_include_directories(firmware_common PUBLIC
     ${COMMON_INCLUDES}
