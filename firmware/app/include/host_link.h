@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    host_link.h
  * @brief   Direct PC link on the ST-LINK virtual COM port (USART2).

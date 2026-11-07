@@ -348,5 +348,6 @@ Verified against ST documentation during development:
 
 ## License
 
-MIT, copyright 2026 platojobs. See [LICENSE](LICENSE). Vendored CMSIS and
-STM32C5xx device files keep their own licenses.
+MIT, copyright 2026 platojobs. SPDX-License-Identifier: `MIT`. See
+[LICENSE](LICENSE). Vendored CMSIS and STM32C5xx device files keep their own
+licenses.

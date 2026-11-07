@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    image_check.h
  * @brief   Validation of a Cortex-M application image stored in flash.

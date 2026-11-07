@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #include "image_check.h"
 #include "flash_layout.h"
 #include "crc.h"

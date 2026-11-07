@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    boot_jump.h
  * @brief   Transfer control from the bootloader to slot A.

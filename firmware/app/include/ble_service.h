@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    ble_service.h
  * @brief   GATT profile state machine on top of the ESP32 AT co-processor.

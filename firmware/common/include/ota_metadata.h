@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    ota_metadata.h
  * @brief   Upgrade state persisted across resets, read by the bootloader.

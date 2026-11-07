@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    sensor_service.c
  * @brief   SHT30 + ADC light sampling with EMA / moving-average filtering.

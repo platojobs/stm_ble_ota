@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #include "esp_at_parser.h"
 #include "hex_util.h"
 

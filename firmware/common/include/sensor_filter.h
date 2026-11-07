@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    sensor_filter.h
  * @brief   Small, allocation-free filters used by the sensor service.

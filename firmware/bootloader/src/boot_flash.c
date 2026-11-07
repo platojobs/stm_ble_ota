@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    boot_flash.c
  * @brief   STM32C5 internal-flash erase/program driver, RAM-resident.

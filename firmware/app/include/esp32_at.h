@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    esp32_at.h
  * @brief   ESP32 AT command engine for the WiFi/BLE co-processor.

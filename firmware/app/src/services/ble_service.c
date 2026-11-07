@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    ble_service.c
  * @brief   ESP-AT GATT setup, URC routing and notification helpers.

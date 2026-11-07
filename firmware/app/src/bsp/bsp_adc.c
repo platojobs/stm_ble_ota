@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_adc.c
  * @brief   ADC1 single conversion on channel 0 (PA0).

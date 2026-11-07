@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    wifi_service.h
  * @brief   WiFi provisioning, persistence and reconnect on top of ESP-AT.

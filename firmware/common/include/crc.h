@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    crc.h
  * @brief   CRC helpers used by the OTA link and the image integrity checks.

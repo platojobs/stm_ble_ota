@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #include "hex_util.h"
 
 static int hex_value(char c)

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    sensor_service.h
  * @brief   Periodic sampling, filtering and reporting of sensors.

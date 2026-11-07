@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_uart.c
  * @brief   USART1/USART2 driver for STM32C562RE.

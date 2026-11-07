@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    boot_jump.c
  * @brief   Jump from the bootloader into the application in slot A.

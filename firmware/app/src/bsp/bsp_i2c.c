@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_i2c.c
  * @brief   I2C1 master for STM32C5 (I2C v2 register set: TIMINGR/CR2/ISR).

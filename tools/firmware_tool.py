@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 platojobs
+
 """Firmware package helper for the stm_ble_ota reference project.
 
 Two artifact kinds are understood:

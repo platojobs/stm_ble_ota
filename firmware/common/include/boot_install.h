@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    boot_install.h
  * @brief   Boot-time decision logic shared by the bootloader and host tests.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    sht30.h
  * @brief   SHT30 temperature/humidity sensor driver (I2C).

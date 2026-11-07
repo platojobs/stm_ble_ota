@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    config_store.h
  * @brief   Persisted WiFi provisioning data (SSID / password / auto-connect).

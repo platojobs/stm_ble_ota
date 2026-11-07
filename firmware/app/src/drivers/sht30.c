@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    sht30.c
  * @brief   SHT30 I2C driver with Sensirion CRC-8 validation.

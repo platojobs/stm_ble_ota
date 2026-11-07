@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_flash.c
  * @brief   STM32C5 internal-flash driver for the application.

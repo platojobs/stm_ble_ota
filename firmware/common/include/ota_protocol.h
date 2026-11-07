@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    ota_protocol.h
  * @brief   Transport-independent frame format shared by BLE, the direct UART

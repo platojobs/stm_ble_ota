@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    wifi_service.c
  * @brief   WiFi provisioning state machine for the ESP32 AT co-processor.

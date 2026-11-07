@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    ota_service.c
  * @brief   Connects the OTA receiver to slot B, metadata and host notifications.

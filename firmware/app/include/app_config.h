@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    app_config.h
  * @brief   Board pinout, firmware identity and protocol-level constants.

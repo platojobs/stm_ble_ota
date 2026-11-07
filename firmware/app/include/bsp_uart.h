@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_uart.h
  * @brief   Interrupt-driven UART abstraction (ESP32 link and PC test link).

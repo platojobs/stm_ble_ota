@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 platojobs
+
 """Minimal host tool for provisioning and OTA against stm_ble_ota.
 
 Two transports are supported:

@@ -332,5 +332,6 @@ profile，以及两种传输方式下的 OTA。时钟仅支持 48 MHz；I2C 时�
 
 ## 许可证
 
-MIT，版权 2026 platojobs，见 [LICENSE](LICENSE)。`firmware/vendor/` 下的
-CMSIS 与 STM32C5xx 设备文件保留其原始许可证。
+MIT，版权 2026 platojobs。SPDX-License-Identifier: `MIT`。见
+[LICENSE](LICENSE)。`firmware/vendor/` 下的 CMSIS 与 STM32C5xx 设备文件保留其
+原始许可证。

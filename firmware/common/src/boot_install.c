@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #include "boot_install.h"
 #include "flash_layout.h"
 #include "image_check.h"

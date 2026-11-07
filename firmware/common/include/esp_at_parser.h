@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    esp_at_parser.h
  * @brief   Classification of ESP-AT response and URC lines.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    host_link.c
  * @brief   USART2 text/binary demultiplexer for the PC test tool.

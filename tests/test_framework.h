@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #ifndef TEST_FRAMEWORK_H
 #define TEST_FRAMEWORK_H
 

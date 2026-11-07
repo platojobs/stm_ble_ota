@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    record_store.h
  * @brief   Power-loss-safe key/value record stored in two alternating flash

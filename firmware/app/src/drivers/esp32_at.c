@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    esp32_at.c
  * @brief   Line-oriented ESP-AT engine.

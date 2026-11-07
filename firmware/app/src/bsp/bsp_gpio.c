@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_gpio.c
  * @brief   LED (PA5) and user button (PC13) on NUCLEO-C562RE.

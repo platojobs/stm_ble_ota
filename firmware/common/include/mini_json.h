@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    mini_json.h
  * @brief   Minimal, allocation-free extractor for flat JSON control messages.

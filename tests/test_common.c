@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 #include "test_framework.h"
 #include "crc.h"
 #include "hex_util.h"

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    flash_layout.h
  * @brief   Flash partition map for STM32C562RE (512 KB dual-bank, 8 KB pages).

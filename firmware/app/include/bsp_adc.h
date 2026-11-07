@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 platojobs
+
 /**
  * @file    bsp_adc.h
  * @brief   Single-channel ADC used by the light/voltage sensor.
