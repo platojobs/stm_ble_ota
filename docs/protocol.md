@@ -55,7 +55,7 @@ Device to host:
 
 | Message | Example |
 | --- | --- |
-| info | `{"type":"info","name":"stm-ble-ota","version":"0.1.0","version_raw":256,"hardware_id":80,"ota_state":0,"last_reason":0,"ble_connected":false,"wifi_connected":false}` |
+| info | `{"type":"info","name":"stm-ble-ota","version":"0.2.0","version_raw":512,"hardware_id":80,"ota_state":0,"last_reason":0,"ble_connected":false,"wifi_connected":false}` |
 | wifi | `{"type":"wifi","ok":true,"connected":true,"ssid":"MyNet","ip":"192.168.1.42","provisioned":true}` |
 | wifi error | `{"type":"wifi","ok":false,"error":"wifi connection failed"}` |
 | sensor | `{"type":"sensor","valid":7,"uptime_ms":12345,"temperature_centi":2412,"humidity_centi":5120,"light_mv":1870}` |
@@ -194,22 +194,55 @@ CRC-32 is `zlib.crc32` in Python and `crc32_ieee_buf()` in C.
 | NACK_JSON | 0x03 | device → host | JSON text |
 | SENSOR_NOTIFY | 0x04 | device → host | `sensor_notify_payload_t` |
 | STATUS_NOTIFY | 0x05 | device → host | JSON text |
-| OTA_BEGIN | 0x10 | host → device | `ota_begin_payload_t` (16 bytes) |
+| OTA_BEGIN | 0x10 | host → device | `ota_begin_payload_t` (116 bytes) |
 | OTA_DATA | 0x11 | host → device | raw image bytes |
 | OTA_END | 0x12 | host → device | `ota_end_payload_t` (8 bytes) |
 | OTA_ABORT | 0x13 | host → device | none |
 | OTA_PROGRESS | 0x14 | device → host | `ota_progress_payload_t` (16 bytes) |
 | OTA_RESULT | 0x15 | device → host | `ota_end_payload_t` (8 bytes) |
+| OTA_QUERY | 0x16 | host → device | none |
+| OTA_INFO | 0x17 | device → host | `ota_info_payload_t` (32 bytes) |
 
 `ota_begin_payload_t`:
 
 ```
-0  u32 image_size     bytes, 64 .. 131072
-4  u32 image_crc32    CRC-32 of the whole image
-8  u32 version        0x00MMmmpp
-12 u32 build_id       free-form
-16 u16 hardware_id    must equal APP_HARDWARE_ID (0x0050)
-18 u16 reserved       zero
+0   u32 image_size     bytes, 64 .. 98304 (FLASH_SLOT_B_SIZE)
+4   u32 image_crc32    CRC-32 of the whole image
+8   u32 version        0x00MMmmpp (major, minor, patch)
+12  u32 build_id       free-form
+16  u16 hardware_id    must equal APP_HARDWARE_ID (0x0050)
+18  u16 reserved       zero
+20  32  image_sha256   SHA-256 of the image bytes
+52  64  signature      Ed25519 over ota_signature_blob_t (see below)
+```
+
+The signature is mandatory: an all-zero signature is rejected with
+`reason=9 (bad_signature)`. The signed blob binds the digest to the fields the
+bootloader acts on:
+
+```
+0  32  image_sha256
+32  u32 image_size
+36  u32 version
+40  u32 build_id
+44  u16 hardware_id
+46  u16 reserved = 0
+```
+
+`ota_info_payload_t` (answer to `OTA_QUERY`, sent after a reset or reconnect):
+
+```
+0   u8  state           ota_state_t
+1   u8  reason          ota_reason_t
+2   u16 reserved
+4   u32 received        contiguous valid prefix that survives a reset
+8   u32 total           announced image size
+12  u32 image_crc32
+16  u32 version
+20  u32 chunk_size      resume granularity (8192 bytes)
+24  u32 chunk_count     number of verified chunks
+28  u16 hardware_id
+30  u16 reserved2
 ```
 
 `ota_progress_payload_t`:
@@ -227,24 +260,40 @@ CRC-32 is `zlib.crc32` in Python and `crc32_ieee_buf()` in C.
 
 ```
 host                                    device
-BEGIN (image_size, crc, version, hw) ->
+QUERY                                  -> INFO (state, received, chunk_count)
+BEGIN (size, crc, version, hw, sha, sig) ->
+                                        if manifest matches a persisted
+                                        partial: verify chunk CRCs, report
+                                        progress(state=RECEIVING, received)
+                                        else: restart at 0
                                         progress(state=RECEIVING)
-DATA offset=0                          ->
-DATA offset=512                        ->
-...                                    progress every +5 %
+DATA offset=received                   ->
+DATA offset=received+512               ->
+...                                    progress/record every 8 KB chunk
 DATA offset=N-512                      ->
 END (image_size, crc)                  ->
                                         progress(state=READY_TO_BOOT)
-                                        reads back slot B and compares CRC
+                                        reads back slot B, checks CRC and SHA
                                         writes metadata (READY_TO_BOOT)
                                         <-- OTA_RESULT
                                         resets after 500 ms
 ```
 
 The device verifies, in this order: size range and hardware id, monotonic
-version, per-frame CRC, contiguous offsets, final stream CRC, CRC of the bytes
-actually present in flash. Any failure produces an `OTA_PROGRESS` with
-`state=ERROR` and the reason code.
+version, signature presence, per-frame CRC, contiguous offsets, final stream
+CRC, SHA-256 of the flash content, and finally the bootloader verifies the
+Ed25519 signature before slot A is touched. Any failure produces an
+`OTA_PROGRESS` with `state=ERROR` and the reason code.
+
+Resume rules:
+
+- metadata is persisted at every 8 KB chunk boundary and on timeout/abort;
+- each chunk CRC is stored, so a reset keeps only the longest prefix whose
+  chunk records still match slot B;
+- a manifest change (size/CRC/version/build/hardware/SHA/signature) discards
+  the partial transfer and restarts at offset 0;
+- `OTA_QUERY` reports the chunk-aligned offset, never a partially written
+  chunk, so the host always resumes at an offset the device accepts.
 
 ### 5.3 State machine
 
@@ -259,27 +308,42 @@ IDLE --BEGIN--> RECEIVING --END--> VERIFYING --ok--> READY_TO_BOOT
 Bootloader side:
 
 ```
+IDLE / ERROR / RECEIVING / INSTALLED
+    if slot A valid -> boot A (boot_attempts incremented; app confirms)
+    if invalid and backup valid -> restore BACKUP into A, boot A
+    else stay in bootloader
+
 READY_TO_BOOT / INSTALLING
-    validate slot B (size, vector table, CRC)
+    validate slot B (size, vector table, CRC, SHA-256, Ed25519)
         fail -> ERROR, boot slot A if valid, else stay
-        ok   -> attempts++, state=INSTALLING, erase slot A, copy B->A
+        ok   -> snapshot slot A to BACKUP (first attempt only)
+                attempts++, state=INSTALLING, erase slot A, copy B->A
                 verify slot A CRC
-                    ok   -> INSTALLED, attempts=0, boot A (3 blinks)
+                    ok   -> INSTALLED, attempts=0, boot A
                     fail -> stay INSTALLING, retry next boot (max 3)
 ```
 
+Rollback: the bootloader increments `boot_attempts` on every jump to slot A.
+The application calls `ota_service_confirm_boot()` after a 3-second healthy
+grace period and clears the counter. If three consecutive boots end before
+confirmation, `boot_policy_evaluate()` returns `ROLLBACK`, the BACKUP slot is
+copied back into slot A and the attempt counter is cleared. `boot_attempts` is
+persisted, so a reset loop cannot hide a broken image.
+
 Reason codes: 0 none, 1 bad_state, 2 bad_size, 3 bad_crc, 4 out_of_order,
-5 flash_error, 6 timeout, 7 aborted, 8 bad_version.
+5 flash_error, 6 timeout, 7 aborted, 8 bad_version, 9 bad_signature.
 
 Rules that keep the old image bootable:
 
 - slot A is erased only after slot B has been fully validated,
+- the running image is snapshotted into BACKUP before the first write to A,
 - a failed or interrupted copy leaves slot B intact and state `INSTALLING`,
   which is retried on the next reset,
 - after `BOOT_MAX_INSTALL_ATTEMPTS` (3) the state becomes `ERROR`; the
   bootloader then boots slot A if it still validates,
 - a version lower than the running version is rejected both in the
-  application (`ota_receiver_begin`) and in the bootloader.
+  application (`ota_receiver_begin`) and in the bootloader,
+- a signed image whose Ed25519 check fails is never copied into slot A.
 
 ### 5.4 Persisted records
 
@@ -299,19 +363,35 @@ Writing erases the page that does not hold the newest valid record, so a torn
 write cannot destroy the last known-good copy. `record_store_load` picks the
 valid record with the highest sequence.
 
-OTA metadata payload (`ota_metadata_t`, all fields `u32`):
+OTA metadata payload (`ota_metadata_t`, 528 bytes, fields `u32` unless noted):
 
 | Field | Meaning |
 | --- | --- |
 | magic | `0x4F4D4554` ("OMET") |
-| layout_version | 1 |
+| layout_version | 2 |
 | state | `ota_state_t` |
 | image_size | bytes in slot B |
-| image_crc32 | CRC of the image |
+| image_crc32 | CRC of the staged image |
 | image_version | `0x00MMmmpp` |
-| install_attempts | retry counter |
+| install_attempts | copy retry counter |
+| boot_attempts | consecutive boots without app confirmation |
 | boot_slot | `FLASH_SLOT_A_START` |
 | previous_version | version running when the download started |
+| received_bytes | contiguous prefix written to slot B |
+| partial_crc32 | raw CRC accumulator for that prefix |
+| build_id | free-form build identifier |
+| hardware_id | must match `APP_HARDWARE_ID` |
+| chunk_size | resume granularity (8192) |
+| chunk_count | number of verified chunks |
+| chunk_valid | bitmask of chunks re-verified after a reset |
+| backup_valid | BACKUP snapshot completed and read back |
+| backup_size / backup_crc32 / backup_version | snapshot descriptor |
+| running_size / running_crc32 / running_version | image currently in slot A |
+| image_sha256[32] | SHA-256 of the staged image |
+| image_signature[64] | Ed25519 signature of the staged image |
+| backup_sha256[32] / backup_signature[64] | snapshot authentication |
+| running_sha256[32] / running_signature[64] | running image authentication |
+| chunk_crc32[12] | CRC of each verified 8 KB chunk |
 | reserved | zero |
 
 WiFi record payload (`wifi_config_record_t`): `magic` "WCFG", `ssid_len`,
@@ -329,4 +409,7 @@ provisioning; this is not a secret vault.
 | WiFi reconnect interval | 30000 ms | `wifi_service.c` |
 | OTA idle timeout | 10000 ms | `ota_receiver.c` |
 | OTA reset delay | 500 ms | `OTA_RESET_DELAY_MS` |
-| Boot install attempts | 3 | `boot_install.h` |
+| Boot install attempts | 3 | `BOOT_MAX_INSTALL_ATTEMPTS` |
+| Boot confirmation grace | 3000 ms | `ota_service` |
+| Boot rollback threshold | 3 unconfirmed boots | `BOOT_MAX_UNCONFIRMED_BOOTS` |
+| IWDG timeout | 2000 ms | `bsp_watchdog.c` |

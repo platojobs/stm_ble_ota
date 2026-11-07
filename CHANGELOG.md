@@ -3,6 +3,36 @@
 All notable changes to this project are documented here. Dates are the actual
 development dates; versions follow semantic versioning.
 
+## [0.2.0] - 2026-11-07
+
+Not validated on hardware; see `KNOWN_ISSUES.md`.
+
+### Added
+
+- **Resumable OTA**: progress is persisted at every 8 KB chunk boundary with
+  per-chunk CRCs; after a reset the receiver re-verifies the stored prefix,
+  truncates to the last valid chunk and `OTA_QUERY` reports a chunk-aligned
+  offset. Manifest changes discard stale progress.
+- **Signed images**: SHA-256 + Ed25519 (TweetNaCl) in the bootloader, signed
+  blob covering digest, size, version, build id and hardware id; the receiver
+  rejects all-zero signatures. `tools/firmware_tool.py keygen/pack/inspect`
+  handles the keypair and package format 2.
+- **Diagnostics CLI** over USART2: version, partition, WiFi, sensor, manual
+  OTA session control, factory reset with confirmation, tolerant JSON parsing.
+- **Watchdog and rollback**: IWDG started by the bootloader, persisted boot
+  attempts, 3-second application confirmation grace period, BACKUP snapshot
+  before the first install attempt, automatic restore after three unconfirmed
+  boots.
+- **Flash layout**: slot A, BACKUP and slot B are 96 KB each; a dedicated
+  backup slot replaces the previous in-place-only install path.
+
+### Changed
+
+- `.ota` package format is now 120-byte header (format 2) with SHA-256 and
+  signature; `.bin` files are no longer accepted by the packer's OTA flow.
+- Version encoding is `0x00MMmmpp`; `APP_VERSION` is `0x00000200` for 0.2.0.
+- Host tests: 551 assertions, including resume, signature failure and rollback.
+
 ## [0.1.0] - 2026-11-07
 
 Initial reference implementation. Not validated on hardware; see

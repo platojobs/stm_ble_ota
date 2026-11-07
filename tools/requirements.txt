@@ -2,5 +2,7 @@
 #
 # Only the serial path is required for the basic provisioning + OTA flow.
 pyserial>=3.5
+# Ed25519 signing for firmware_tool.py pack (v2 packages).
+cryptography>=41.0
 # Optional: BLE transport (--ble). Not needed for the USART2 test link.
 bleak>=0.21

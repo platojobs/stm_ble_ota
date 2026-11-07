@@ -16,31 +16,40 @@ python3 -m pip install -r tools/requirements.txt
 
 ## Firmware packaging
 
-`firmware_tool.py` computes the same CRC-32/IEEE as the firmware and checks
-that the image's initial SP and reset vector are plausible for slot A
-(`0x0800_8000`).
+`firmware_tool.py` computes the same CRC-32/IEEE as the firmware, checks that
+the image's initial SP and reset vector are plausible for slot A
+(`0x0800_8000`), and signs the manifest with Ed25519. The public key is
+compiled into the bootloader; the private key is never stored in the repository.
 
 ```bash
+# generate a local keypair (tools/keys/ is git-ignored)
+python3 tools/firmware_tool.py keygen --out tools/keys
+
 python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
 
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.2.0 --hw 0x0050 --build-id 2 -o build/app-0.2.0.ota
+    --version 0.2.0 --hw 0x0050 --build-id 2 \
+    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
 ```
 
-Package layout (24-byte header + image):
+`--key` can be omitted when `OTA_SIGNING_KEY` points to the private-key PEM.
+
+Package layout (120-byte header + image, format 2):
 
 | Offset | Size | Field |
 | --- | --- | --- |
 | 0 | 4 | magic `OTAP` |
-| 4 | 2 | format version (1) |
+| 4 | 2 | format version (2) |
 | 6 | 2 | hardware id |
 | 8 | 4 | version `0x00MMmmpp` |
 | 12 | 4 | image size |
 | 16 | 4 | image CRC-32 |
 | 20 | 4 | build id |
-| 24 | N | image bytes |
+| 24 | 32 | SHA-256 of the image bytes |
+| 56 | 64 | Ed25519 signature of the signed blob |
+| 120 | N | image bytes |
 
 ## Provisioning and OTA
 
@@ -75,7 +84,6 @@ python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota
 Useful options: `--chunk` (DATA payload size, ≤ 512), `--pace` (delay between
 DATA frames), `--timeout` (overall OTA timeout), `--reboot-timeout`,
 `--address` (skip BLE scanning).
-
 Progress is printed on stderr as JSON, so the stdout of an OTA run stays clean
 for scripts. The process exits non-zero when the device reports an error state
 or when a timeout expires.
@@ -83,11 +91,13 @@ or when a timeout expires.
 ## Expected sequence
 
 ```
-BEGIN  -> progress state=receiving
-DATA*  -> progress every 5 %
+QUERY  -> info (state, chunk-aligned received offset)
+BEGIN  -> progress state=receiving, resumes from the stored prefix
+DATA*  -> progress every 8 KB chunk / 5 %
 END    -> progress state=ready_to_boot
         device resets after 500 ms
-boot   -> bootloader validates slot B, copies to slot A
+boot   -> bootloader validates slot B (CRC, SHA-256, Ed25519),
+          snapshots slot A to backup, copies B to A
         device restarts the application
 --verify -> info shows the new version
 ```

@@ -78,22 +78,24 @@ PA2/PA3（见 KNOWN_ISSUES）。
 | 区域 | 地址 | 大小 | 页号 | 内容 |
 | --- | --- | --- | --- | --- |
 | Bootloader | `0x0800_0000` | 32 KB | 0–3 | bootloader，拷贝循环放在 RAM |
-| Slot A（应用） | `0x0800_8000` | 128 KB | 4–19 | 正在运行的 APP，链接地址 |
-| Bank1 预留 | `0x0802_8000` | 96 KB | 20–31 | 未使用 |
-| Slot B（OTA 暂存） | `0x0804_0000` | 128 KB | 32–47 | 下载的新镜像 |
-| OTA 元数据 | `0x0806_0000` | 16 KB | 48–49 | 双页交替记录 |
-| WiFi 配置 | `0x0806_4000` | 16 KB | 50–51 | 双页交替记录 |
-| Bank2 预留 | `0x0806_8000` | 96 KB | 52–63 | 未使用 |
+| Slot A（应用） | `0x0800_8000` | 96 KB | 4–15 | 正在运行的 APP，链接地址 |
+| 备份区 | `0x0802_0000` | 96 KB | 16–27 | 上一个确认可运行 APP 的快照 |
+| Bank1 预留 | `0x0803_8000` | 32 KB | 28–31 | 未使用 |
+| Slot B（OTA 暂存） | `0x0804_0000` | 96 KB | 32–43 | 下载的新镜像 |
+| OTA 元数据 | `0x0805_8000` | 16 KB | 44–45 | 双页交替记录 |
+| WiFi 配置 | `0x0805_C000` | 16 KB | 46–47 | 双页交替记录 |
+| Bank2 预留 | `0x0806_0000` | 128 KB | 48–63 | 未使用 |
 
 启动流程：
 
-1. bootloader 读取 OTA 记录。
-2. 状态为 `READY_TO_BOOT` 或 `INSTALLING` 时，先校验 slot B（大小、向量表、
-   CRC），再擦除 slot A 并把 B 拷贝到 A。中断的拷贝会在下次复位时重试
-   （拷贝开始前 slot B 完好，擦除只影响 slot A）。
-3. slot A 校验通过则跳转；否则停在 bootloader（LED 慢闪循环）。
-4. `INSTALLED` 时快闪 3 次后启动；`INSTALLING`/`READY_TO_BOOT` 快闪 2 次；
-   停在 bootloader 时慢闪。
+1. bootloader 启动 IWDG（2 s）并读取 OTA 记录。
+2. 跳转 slot A 前先把持久化的 `boot_attempts` 计数加一。
+3. 状态为 `READY_TO_BOOT` 或 `INSTALLING` 时，先校验 slot B（大小、向量表、
+   CRC、SHA-256、Ed25519），首次安装前把 slot A 快照到备份区，再擦除 slot A
+   并把 B 拷贝到 A。拷贝中断或失败会保持 `INSTALLING`，下次复位重试（最多 3 次）。
+4. slot A 校验通过则跳转并快闪 3 次；否则备份区有效时恢复备份，仍无效则停在
+   bootloader（LED 慢闪循环）。
+5. APP 在健康运行 3 s 后清除启动计数；连续 3 次未确认启动会触发备份回滚。
 
 擦写函数与拷贝循环位于 `.ramfunc`，因为 bootloader 擦除的是自己所在的
 bank。APP 写的是另一个 bank 的 slot B，双 bank 读写并行，因此不需要 RAM
@@ -163,18 +165,25 @@ AT+BLEADVSTART
 16 N  payload
 ```
 
-BEGIN 载荷：`image_size`、`image_crc32`、`version`（`0x00MMmmpp`）、
-`build_id`、`hardware_id`（必须等于 `0x0050`）、保留字段。
+BEGIN 载荷（116 字节）：`image_size`、`image_crc32`、`version`
+（`0x00MMmmpp`）、`build_id`、`hardware_id`（必须等于 `0x0050`）、保留字段、
+`image_sha256[32]`、`signature[64]`。Ed25519 签名覆盖摘要以及
+大小/版本/build/硬件 ID；全零签名会被拒绝。
 
 状态：`IDLE → RECEIVING → VERIFYING → READY_TO_BOOT`；大小/CRC/顺序/超时/
-中止等错误会进入 `ERROR`。设备会校验每一帧 CRC、整包 CRC，以及从 Flash
-回读的实际字节 CRC。版本低于当前运行版本会被拒绝。
+中止/签名错误会进入 `ERROR`。设备会校验每一帧 CRC、整包 CRC、从 Flash
+回读数据的 SHA-256，bootloader 在写 slot A 前再验一次 Ed25519 签名。
+
+断点续传：每完成 8 KB 分块以及超时/中止时持久化进度与分块 CRC；复位后
+`OTA_QUERY` 返回按分块对齐的偏移，主机从设备已复核的前缀继续；清单
+（大小/CRC/版本/build/硬件/SHA/签名）变化时丢弃旧进度并从头开始。
 
 失败处理：
 
-- slot B 校验通过前不擦除 slot A；
+- slot B 校验通过前不擦除 slot A，首次安装前把 slot A 快照到备份区；
 - 拷贝中断后下次复位自动重试；
 - 连续 3 次失败后状态置为 `ERROR`，旧 slot A 仍然可以启动；
+- 验签失败时启动 slot A 并记录 `bad_signature`；
 - 校验完成后才写元数据，元数据用双页交替记录，写入过程中掉电不会丢失上一份。
 
 完整状态机、原因码与持久化格式见 [docs/protocol.md](docs/protocol.md)。
@@ -183,7 +192,8 @@ BEGIN 载荷：`image_size`、`image_crc32`、`version`（`0x00MMmmpp`）、
 
 ```
 firmware/
-  common/      协议、CRC、记录存储、元数据、安装决策、滤波器
+  common/      协议、CRC、SHA-256、Ed25519、记录存储、元数据、安装策略、
+               CLI 解析器、滤波器
   bootloader/  校验、拷贝、跳转、Flash 驱动、main
   app/
     bsp/       时钟节拍、GPIO、USART、I2C、ADC、Flash（寄存器级）
@@ -224,8 +234,8 @@ build/arm/stm_ble_ota_bootloader.bin / .hex
 build/arm/stm_ble_ota_app.bin / .hex
 ```
 
-本仓库实测尺寸：bootloader 占用 3,976 B Flash / 5 KB RAM，APP 占用
-18,048 B Flash / 9,432 B RAM，均在各自分区内。
+本仓库实测尺寸：bootloader 占用 24,568 B Flash / 约 56 B 静态 RAM，APP 占用
+28,784 B Flash / 约 3.9 KB 静态 RAM（另加 4 KB 栈），均在各自分区内。
 
 编译并运行主机测试：
 
@@ -256,19 +266,51 @@ STM32_Programmer_CLI -c port=SWD -e all
 **不需要安装任何 VS Code STM32 插件。** 编译、烧录、OTA 全部走命令行；
 可选的 Cortex-Debug 扩展只用于源码级调试，本仓库的任何流程都不依赖它。
 
+## 串口诊断 CLI（USART2，115200 8N1）
+
+每行一个 JSON 对象；命令大小写不敏感、多余空格会被忽略，未知或格式错误
+输入会返回错误而不会卡死解析器。
+
+```bash
+{"cmd":"version"}       # 固件版本、build id、硬件 ID
+{"cmd":"partition"}     # slot A/B 大小、元数据状态、尝试次数
+{"cmd":"wifi"}          # 链路状态、SSID、IP
+{"cmd":"sensor"}        # 最新的温湿度/光照滤波值
+{"cmd":"ota","op":"start"}   # 中止旧会话并接受新会话
+{"cmd":"ota","op":"status"}  # 状态、已接收字节、最近原因码
+{"cmd":"ota","op":"abort"}   # 中止当前会话
+{"cmd":"factory","op":"reset"}        # 擦除配置与元数据并复位
+{"cmd":"factory","op":"confirm"}      # 恢复出厂的二次确认
+```
+
+`tools/ota_host.py`（`version`、`partition`、`sensor`、`factory reset` 等）
+通过 VCP 提供同样的命令。
+
 ## 上位机工具
 
 ```bash
 python3 -m pip install -r tools/requirements.txt
 ```
 
-打包镜像（把版本、硬件 ID 与 CRC 写入 `.ota` 容器）：
+密钥管理：Ed25519 **公钥**编译进 bootloader
+（`firmware/common/include/ota_public_key.h`）。仓库中提交了一对**演示**
+私钥（`tools/keys/demo_ed25519_private.pem`），以便开箱即用跑通参考 OTA
+流程；任何真实设备都必须用离线生成的密钥替换它（用 `firmware_tool.py keygen`）。
+`tools/keys/` 下的其它文件仍被 git 忽略。
 
 ```bash
-python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
+# 一次性生成签名密钥对（私钥留在本地/离线环境）
+python3 tools/firmware_tool.py keygen --out tools/keys
+
+# 打包并签名
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.1.0 --hw 0x0050 -o build/app-0.1.0.ota
+    --version 0.2.0 --hw 0x0050 --build-id 200 \
+    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+
+python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```
+
+CI 中可用环境变量 `OTA_SIGNING_KEY` 替代 `--key`。
 
 通过 PC 链路配网：
 
@@ -280,17 +322,17 @@ python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX wifi status
 python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX wifi clear
 ```
 
-OTA 全流程（含复位后回读版本）：
+OTA 全流程（先查询续传偏移，再继续传输）：
 
 ```bash
-python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX ota build/app-0.1.0.ota --verify
+python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX ota build/app-0.2.0.ota --verify
 ```
 
 BLE 方式（需要 `bleak` 与自定义 ESP-AT 服务）：
 
 ```bash
 python3 tools/ota_host.py --ble --name STM-BLE-OTA info
-python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.1.0.ota --verify
+python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --verify
 ```
 
 首次联调建议先用串口：它使用完全相同的 JSON 命令和二进制 OTA 帧，且不依赖
@@ -306,10 +348,12 @@ BSP、Flash 驱动、链接脚本、启动文件和 `flash_layout.h`；
 ## 已知限制
 
 未在真实硬件上验证：启动、跳转、Flash 擦写、传感器、WiFi 连接、BLE
-profile，以及两种传输方式下的 OTA。时钟仅支持 48 MHz；I2C 时序、ADC 精度
-和 Flash 时序均为理论推导，未实测。ESP-AT 需要重新构建自定义服务表，官方
-固件不包含 `0xFF00`。OTA 仅提供 CRC 完整性校验，没有签名与加密。WiFi
-密码以明文保存在片内 Flash。
+profile、看门狗复位、回滚，以及两种传输方式下的 OTA。时钟仅支持 48 MHz；
+I2C 时序、ADC 精度和 Flash 时序均为理论推导，未实测。ESP-AT 需要重新构建
+自定义服务表，官方固件不包含 `0xFF00`。OTA 完整性使用 CRC-32 + SHA-256，
+真实性使用 Ed25519；没有加密，也没有防回滚熔丝。WiFi 密码以明文保存在参数
+页（明文存储的边界条件见 KNOWN_ISSUES）。bootloader 仅在元数据完全没有
+签名时接受未签名镜像（产线烧录路径）；OTA 下载始终要求有效签名。
 
 完整清单见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
 

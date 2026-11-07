@@ -19,11 +19,16 @@ no board available while it was written.
 | BLE GATT profile with a real phone/PC central | **not verified** |
 | OTA over BLE | **not verified** |
 | OTA over USART2 | protocol path covered by host tests; **not verified on hardware** |
+| Resumed transfer after a real power loss mid-chunk | state machine tested on host; **not verified on hardware** |
+| Ed25519 verification on target (TweetNaCl) | vectors pass on host with SHA/Ed25519 tests; **not verified on hardware** |
+| IWDG timeout, window and reset source handling | register sequence derived from RM0522; **not verified** |
+| Boot confirmation, three-failure rollback and backup restore | logic tested on host; **not verified on hardware** |
 
-Host-side logic tests (394 assertions) cover CRC, frame parsing/resync, record
-store torn-write recovery, image validation, OTA state machine, install/copy
-decisions and downgrade rejection. They use an in-memory fake flash and do not
-model real flash timing.
+Host-side logic tests (551 assertions) cover CRC, frame parsing/resync, record
+store torn-write recovery, image validation (size, vectors, CRC, SHA-256,
+Ed25519), OTA state machine and resume/truncation, install/copy decisions,
+signature failure, downgrade rejection, CLI parsing and rollback policy. They
+use an in-memory fake flash and do not model real flash timing.
 
 ## 2. Clock and register-level assumptions
 
@@ -78,7 +83,7 @@ model real flash timing.
   source changes.
 - Notification payloads are limited to 20 bytes by the default MTU. An OTA
   DATA frame of 512 bytes therefore takes 27 `AT+BLEGATTSNTFY` round trips.
-  BLE throughput is **not measured**; a full 128 KB image over BLE is likely
+  BLE throughput is **not measured**; a full 96 KB image over BLE is likely
   to take minutes. The receiver's timeout is an **idle** timeout (10 s
   without progress), not a total transfer timeout.
 - `AT+BLEGATTSNTFY` errors for a disconnected central are ignored by the
@@ -89,27 +94,39 @@ model real flash timing.
 
 ## 5. Protocol and product limitations
 
-- Firmware images are checked with CRC-32 only. There is **no signature,
-  encryption or secure boot**. Anyone who can reach the OTA channel can flash
-  a compatible image.
+- OTA authenticity uses Ed25519 over a SHA-256 digest, verified in the
+  bootloader. An **all-zero signature is rejected by the application receiver**,
+  but the bootloader still accepts an image whose metadata carries no signature
+  at all (the factory-programming path). Direct flash access bypasses every
+  check; there is no secure-boot fuse, no encryption and no anti-rollback fuse.
+- The demo public key in `firmware/common/include/ota_public_key.h` is generated
+  with the local demo private key under `tools/keys/` (git-ignored). Replacing
+  the key requires rebuilding and re-flashing the bootloader; rotating a leaked
+  key is therefore a bootloader update, not an OTA of the application.
 - Downgrade protection is a simple version comparison (`version < previous` is
-  rejected). An equal version is accepted. Erasing metadata through a debugger
-  bypasses the check entirely.
-- WiFi credentials are stored in plaintext in the config record. This matches
-  typical ESP32 AT provisioning but is not a secret store.
+  rejected, equal is accepted), enforced in both the receiver and the
+  bootloader. Erasing metadata through a debugger bypasses the check entirely.
+- WiFi credentials are stored in plaintext (SSID/password) in the config
+  record. The threat model is "attacker with physical access to the
+  flash/debug port"; there is no secure element and no key derived from a
+  device-unique secret. Do not reuse sensitive credentials.
 - The USART2 PC link shares the ST-LINK virtual COM port. Whether the
   NUCLEO-C562RE solder bridges route the VCP to PA2/PA3 by default is
   **not verified**; check the board user manual before wiring.
 - `tools/ota_host.py` BLE mode requires `bleak` and a working custom ESP-AT
   build. The serial mode has no such dependency beyond `pyserial`.
-- The `.ota` package format is a host-side convenience container; the
-  bootloader does not read it. Only the raw image bytes are transferred.
+- The `.ota` package format (format 2, SHA-256 + signature in the header) is a
+  host-side container; the bootloader does not read it. Only the raw image
+  bytes and the manifest are transferred.
 - The host tool's `--verify` step reconnects and reads `info`; if the device
   fails to boot after an OTA, this reports a timeout rather than a diagnosis.
-- Application image must fit in 128 KB (slot A). There is no compression or
-  differential update.
-- `PC13` button is initialised but unused; no factory-reset gesture is
-  implemented.
+- Application image must fit in 96 KB (slot A and slot B). There is no
+  compression or differential update. The BLE path moves 512 bytes per DATA
+  frame, 27 notifications each under the default 20-byte MTU, so a full image
+  over BLE is **slow and not timed on hardware**.
+- `PC13` button is initialised but unused; factory reset is available through
+  the CLI (`{"cmd":"factory","op":"reset"}` plus a confirmation), not as a
+  button gesture.
 
 ## 6. Documentation consistency
 

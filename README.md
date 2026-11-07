@@ -80,24 +80,27 @@ Device: 512 KB program flash, two 256 KB banks, 8 KB erase pages.
 | Region | Address | Size | Pages | Content |
 | --- | --- | --- | --- | --- |
 | Bootloader | `0x0800_0000` | 32 KB | 0–3 | bootloader, copy loop in RAM |
-| Slot A (application) | `0x0800_8000` | 128 KB | 4–19 | running app, linked here |
-| Bank 1 reserved | `0x0802_8000` | 96 KB | 20–31 | unused |
-| Slot B (OTA staging) | `0x0804_0000` | 128 KB | 32–47 | downloaded image |
-| OTA metadata | `0x0806_0000` | 16 KB | 48–49 | two alternating records |
-| WiFi config | `0x0806_4000` | 16 KB | 50–51 | two alternating records |
-| Bank 2 reserved | `0x0806_8000` | 96 KB | 52–63 | unused |
+| Slot A (application) | `0x0800_8000` | 96 KB | 4–15 | running app, linked here |
+| Backup slot | `0x0802_0000` | 96 KB | 16–27 | snapshot of the last confirmed app |
+| Bank 1 reserved | `0x0803_8000` | 32 KB | 28–31 | unused |
+| Slot B (OTA staging) | `0x0804_0000` | 96 KB | 32–43 | downloaded image |
+| OTA metadata | `0x0805_8000` | 16 KB | 44–45 | two alternating records |
+| WiFi config | `0x0805_C000` | 16 KB | 46–47 | two alternating records |
+| Bank 2 reserved | `0x0806_0000` | 128 KB | 48–63 | unused |
 
 Boot flow:
 
-1. Bootloader reads the OTA record store.
-2. If state is `READY_TO_BOOT` or `INSTALLING`, validate slot B (size,
-   vector table, CRC), then erase slot A and copy B → A. Interrupted copies are
-   retried on the next reset (slot B is untouched until the copy starts, and
-   only slot A is erased).
-3. If slot A validates, jump to it; otherwise stay in the bootloader
+1. Bootloader starts IWDG (2 s) and reads the OTA record store.
+2. It increments the persisted `boot_attempts` counter before jumping to slot A.
+3. If state is `READY_TO_BOOT` or `INSTALLING`, it validates slot B (size,
+   vector table, CRC, SHA-256, Ed25519), snapshots slot A into BACKUP on the
+   first attempt, then erases slot A and copies B → A. An interrupted or failed
+   copy stays in `INSTALLING` and is retried on the next reset (max 3).
+4. If slot A validates, the bootloader jumps to it and blinks 3 times.
+   Otherwise it restores BACKUP when valid, or stays in the bootloader
    (LED slow-blink loop).
-4. `INSTALLED` blinks 3 times before boot, `INSTALLING`/`READY_TO_BOOT` blinks
-   2 times, staying in the bootloader blinks slowly.
+5. The application clears the boot-attempt counter after a 3-second healthy
+   grace period; three unconfirmed boots in a row trigger the BACKUP rollback.
 
 The copy loop and flash erase/program routines live in `.ramfunc`, because the
 bootloader erases the same bank it executes from. The application writes slot B
@@ -170,20 +173,29 @@ Transport-independent, 16-byte header + payload (≤ 512 bytes):
 16 N  payload
 ```
 
-BEGIN payload: `image_size`, `image_crc32`, `version` (`0x00MMmmpp`),
-`build_id`, `hardware_id` (must equal `0x0050`), reserved.
+BEGIN payload (116 bytes): `image_size`, `image_crc32`, `version`
+(`0x00MMmmpp`), `build_id`, `hardware_id` (must equal `0x0050`), reserved,
+`image_sha256[32]`, `signature[64]`. The Ed25519 signature covers the digest
+plus size/version/build/hardware, and an all-zero signature is rejected.
 
 States: `IDLE → RECEIVING → VERIFYING → READY_TO_BOOT`, with `ERROR` on bad
-size/CRC/order/timeout/abort. The device verifies every frame CRC, the final
-stream CRC and the CRC of the bytes actually read back from flash. A version
-lower than the running version is rejected.
+size/CRC/order/timeout/abort/signature. The device verifies every frame CRC,
+the final stream CRC, the SHA-256 of the bytes read back from flash, and the
+bootloader re-verifies the Ed25519 signature before touching slot A.
+
+Resume: progress is persisted at every 8 KB chunk boundary (with per-chunk
+CRC records) and on timeout/abort. `OTA_QUERY` returns the chunk-aligned
+offset, so after a reset the host resumes from a prefix the device has
+re-verified; a changed manifest discards the partial transfer.
 
 Failure handling:
 
-- slot A is not erased until slot B validates,
+- slot A is not erased until slot B validates, and it is snapshotted to BACKUP
+  on the first install attempt,
 - an interrupted copy is retried on the next reset,
 - after 3 failed attempts the state becomes `ERROR` and the old slot A still
   boots,
+- a failed signature check boots slot A and records `bad_signature`,
 - metadata is written after verification and persisted with a double-page
   record store (no single point of failure during a write).
 
@@ -194,7 +206,8 @@ The complete state machine, reason codes and persisted record layouts are in
 
 ```
 firmware/
-  common/      protocol, CRC, record store, metadata, install logic, filters
+  common/      protocol, CRC, SHA-256, Ed25519, record store, metadata,
+               install policy, CLI parser, filters
   bootloader/  validation, copy, jump, flash driver, main
   app/
     bsp/       time, GPIO, USART, I2C, ADC, flash (register level)
@@ -236,8 +249,9 @@ build/arm/stm_ble_ota_bootloader.bin / .hex
 build/arm/stm_ble_ota_app.bin / .hex
 ```
 
-Reference sizes from this tree: bootloader 3,976 B flash / 5 KB RAM,
-application 18,048 B flash / 9,432 B RAM. Both fit their regions.
+Reference sizes from this tree: bootloader 24,568 B flash / ~56 B static RAM,
+application 28,784 B flash / ~3.9 KB static RAM (plus a 4 KB stack). Both fit
+their regions.
 
 Build and run host tests (native compiler):
 
@@ -269,19 +283,54 @@ all OpenOCD releases; verify before relying on it (KNOWN_ISSUES).
 from the command line. The optional Cortex-Debug extension only adds source
 level debugging and is not needed for any workflow in this repository.
 
+## Diagnostics CLI (USART2, 115200 8N1)
+
+One JSON object per line; the command is case-insensitive and extra spaces are
+ignored. Unknown or malformed input answers with an error and never wedges the
+parser.
+
+```bash
+{"cmd":"version"}       # firmware version, build id, hardware id
+{"cmd":"partition"}     # slot A/B sizes, metadata state, attempts
+{"cmd":"wifi"}          # link state, SSID, IP
+{"cmd":"sensor"}        # latest filtered temperature/humidity/light
+{"cmd":"ota","op":"start"}   # abort any stale session, accept a new one
+{"cmd":"ota","op":"status"}  # state, received bytes, last reason
+{"cmd":"ota","op":"abort"}   # abort the session
+{"cmd":"factory","op":"reset"}        # erase config+metadata and reset
+{"cmd":"factory","op":"confirm"}      # required follow-up to factory reset
+```
+
+The same commands are available from `tools/ota_host.py` (`version`,
+`partition`, `sensor`, `factory reset`, ...) and the firmware answers over the
+VCP.
+
 ## Host tools
 
 ```bash
 python3 -m pip install -r tools/requirements.txt
 ```
 
-Package an image (adds version, hardware id and CRC to a `.ota` container):
+Key handling: the Ed25519 **public** key is compiled into the bootloader
+(`firmware/common/include/ota_public_key.h`). A **demo** private key
+(`tools/keys/demo_ed25519_private.pem`) is committed so the reference OTA flow
+works out of the box; it must be replaced with an offline-generated key for any
+real device (use `firmware_tool.py keygen`). Other files under `tools/keys/`
+stay git-ignored.
 
 ```bash
-python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
+# one-time: generate a signing keypair (private stays local/offline)
+python3 tools/firmware_tool.py keygen --out tools/keys
+
+# package and sign an image
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.1.0 --hw 0x0050 -o build/app-0.1.0.ota
+    --version 0.2.0 --hw 0x0050 --build-id 200 \
+    --key tools/keys/demo_ed25519_private.pem -o build/app-0.2.0.ota
+
+python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```
+
+`--key` may be replaced by the `OTA_SIGNING_KEY` environment variable in CI.
 
 Provisioning over the PC link:
 
@@ -293,17 +342,17 @@ python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX wifi status
 python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX wifi clear
 ```
 
-OTA end to end, including a reconnect/version check:
+OTA end to end (queries the resume offset first, then continues):
 
 ```bash
-python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX ota build/app-0.1.0.ota --verify
+python3 tools/ota_host.py --serial /dev/cu.usbmodemXXXX ota build/app-0.2.0.ota --verify
 ```
 
 BLE mode (`bleak`, requires the custom ESP-AT service):
 
 ```bash
 python3 tools/ota_host.py --ble --name STM-BLE-OTA info
-python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.1.0.ota --verify
+python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --verify
 ```
 
 Serial is the recommended first bring-up path: it uses the same JSON commands
@@ -320,11 +369,15 @@ routine).
 ## Limitations
 
 Not verified on hardware: boot, jump, flash erase/program, sensors, WiFi join,
-BLE profile, and OTA over both transports. Clock is 48 MHz only; I2C timing,
-ADC accuracy and flash timing are analytic, not measured. ESP-AT needs a custom
-service table rebuild; stock firmware does not expose `0xFF00`. OTA has CRC
-integrity but no signature or encryption. WiFi credentials are stored in
-plaintext.
+BLE profile, watchdog reset, rollback and OTA over both transports. Clock is
+48 MHz only; I2C timing, ADC accuracy and flash timing are analytic, not
+measured. ESP-AT needs a custom service table rebuild; stock firmware does not
+expose `0xFF00`. OTA integrity uses CRC-32 + SHA-256 and authenticity uses
+Ed25519; there is no encryption and no anti-rollback fuse. WiFi credentials are
+stored in plaintext in the parameter pages (see KNOWN_ISSUES for the boundary
+of that assumption). The bootloader accepts an unsigned image only if the
+metadata carries no signature at all (factory provisioning path); OTA downloads
+always require a valid signature.
 
 The complete list is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
