@@ -6,6 +6,7 @@
 add_executable(stm_ble_ota_app
     src/app/main.c
     src/app/host_link.c
+    src/app/crash_handler.c
     src/bsp/bsp_time.c
     src/bsp/bsp_gpio.c
     src/bsp/bsp_uart.c
@@ -21,6 +22,7 @@ add_executable(stm_ble_ota_app
     src/services/ota_service.c
     src/services/cli_service.c
     src/services/fault_service.c
+    src/services/crash_service.c
     src/services/device_service.c
     src/services/selftest_service.c
     ${CMAKE_SOURCE_DIR}/firmware/common/src/syscalls.c

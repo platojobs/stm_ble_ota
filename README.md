@@ -87,7 +87,8 @@ Device: 512 KB program flash, two 256 KB banks, 8 KB erase pages.
 | OTA metadata | `0x0805_8000` | 16 KB | 44–45 | two alternating records |
 | WiFi config | `0x0805_C000` | 16 KB | 46–47 | two alternating records |
 | Device info | `0x0806_0000` | 16 KB | 48–49 | serial + hardware id, two alternating records |
-| Bank 2 reserved | `0x0806_4000` | 96 KB | 50–63 | unused |
+| Crash log | `0x0806_4000` | 64 KB | 50–57 | last 8 exception records, one page per record |
+| Bank 2 reserved | `0x0807_4000` | 48 KB | 58–63 | unused |
 
 Boot flow:
 
@@ -330,6 +331,8 @@ ota start             abort any stale session, accept a new one
 ota status            state, received bytes, reason + shared err_code
 ota abort             abort the session
 log                   recent fault ring buffer (code, name, detail)
+crash                 last 8 persistent crash records, one JSON line each
+crash clear           erase the persistent crash ring
 device                serial, hardware id, firmware version, factory state
 selftest              flash / I2C / ADC / BLE production self-test
 factory reset         erase config+metadata and reset (keeps device info)
@@ -338,6 +341,18 @@ factory reset         erase config+metadata and reset (keeps device info)
 The answers are one JSON object per line. `ota status` and `log` also expose
 the shared codes documented in [docs/error_codes.md](docs/error_codes.md);
 the BLE info characteristic reports `fault_count` / `last_err` as well.
+
+### Crash diagnostics
+
+HardFault, MemManage, BusFault and UsageFault are captured with the stacked
+R0–R3/R12/LR/PC/xPSR, CFSR/HFSR/MMFAR/BFAR, the resolved fault address, eight
+words of the caller's stack and the firmware version/build id. The record is
+written to `.noinit` RAM and the MCU resets; on the next boot the application
+persists it to the crash log (pages 50–57, eight records, oldest page reused).
+The CLI `crash` command prints the whole ring, `crash clear` erases it; writing
+`crash` (or `crash clear`) to the BLE provisioning characteristic returns the
+newest record. Each boot that recovers a record also raises
+`CRASH_DETECTED` (0x0706) in the RAM fault log.
 
 The same commands are available from `tools/ota_host.py` (`version`,
 `part`, `sensor`, `factory reset`, ...) and the firmware answers over the

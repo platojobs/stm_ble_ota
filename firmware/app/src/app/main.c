@@ -30,6 +30,7 @@
 #include "cli_service.h"
 #include "device_service.h"
 #include "fault_service.h"
+#include "crash_service.h"
 #include "esp32_at.h"
 #include "mini_json.h"
 #include "config_store.h"
@@ -61,6 +62,7 @@ static void build_info_json(char *out, size_t out_size)
                    "\"version_raw\":%u,\"hardware_id\":%u,\"provisioned\":%s,"
                    "\"ota_state\":%u,\"last_reason\":%u,\"fault_count\":%u,"
                    "\"last_err\":%u,\"last_err_name\":\"%s\","
+                   "\"crash_count\":%u,"
                    "\"ble_connected\":%s,\"wifi_connected\":%s}",
                    APP_NAME, identity->serial,
                    (unsigned)major, (unsigned)minor, (unsigned)patch,
@@ -68,14 +70,14 @@ static void build_info_json(char *out, size_t out_size)
                    identity->provisioned ? "true" : "false",
                    (unsigned)ota_service_state(), (unsigned)ota_service_last_reason(),
                    (unsigned)fault_service_count(), (unsigned)last_err,
-                   err_code_name(last_err),
+                   err_code_name(last_err), (unsigned)crash_service_count(),
                    ble_service_connected() ? "true" : "false",
                    wifi_service_connected() ? "true" : "false");
 }
 
 static void send_info_json(void)
 {
-    char json[400];
+    char json[480];
     build_info_json(json, sizeof(json));
     host_link_send_json(json);
     if (ble_service_connected()) {
@@ -143,6 +145,31 @@ static void on_provision_text(const uint8_t *data, uint32_t length, void *contex
     }
     memcpy(json, data, length);
     json[length] = '\0';
+
+    while (length > 0u && (json[length - 1u] == '\r' ||
+                           json[length - 1u] == '\n' ||
+                           json[length - 1u] == ' ')) {
+        json[--length] = '\0';
+    }
+
+    /* Diagnostics over BLE: crash history and its clear command. */
+    if (strcmp(json, "crash") == 0) {
+        static char crash_json[900];
+        if (crash_service_last_json(crash_json, sizeof(crash_json)) != 0u) {
+            (void)ble_service_notify_provision(crash_json);
+        }
+        return;
+    }
+    if (strcmp(json, "crash clear") == 0) {
+        bool ok = crash_service_clear() == 0;
+        (void)ble_service_notify_provision(
+            ok ? "{\"type\":\"cli\",\"cmd\":\"crash\",\"action\":\"clear\","
+                 "\"ok\":true}"
+               : "{\"type\":\"cli\",\"cmd\":\"crash\",\"action\":\"clear\","
+                 "\"ok\":false}");
+        return;
+    }
+
     (void)wifi_service_handle_command(json, length);
 }
 
@@ -223,6 +250,7 @@ int main(void)
 
     esp_at_init(&g_esp, BSP_UART_ESP, on_esp_urc, NULL);
     fault_service_init();
+    crash_service_init();
     device_service_init();
 
     if (ota_service_init() != 0) {

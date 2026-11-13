@@ -68,6 +68,7 @@ domain block and this table is updated in the same commit.
 | `0x0703` | `ERR_CODE_ROLLBACK` | system | Rolled back to the BACKUP image |
 | `0x0704` | `ERR_CODE_NOT_IMPLEMENTED` | system | Feature reserved, not built |
 | `0x0705` | `ERR_CODE_SELFTEST_FAILED` | system | Production self-test item failed |
+| `0x0706` | `ERR_CODE_CRASH_DETECTED` | system | A crash record was recovered from retained RAM |
 
 ## Mapping from internal enums
 

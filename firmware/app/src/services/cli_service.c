@@ -13,6 +13,7 @@
 #include "device_service.h"
 #include "selftest_service.h"
 #include "fault_service.h"
+#include "crash_service.h"
 #include "bsp_time.h"
 #include "stm32c562xx.h"
 
@@ -24,8 +25,8 @@ static void usage(void)
     host_link_send_json(
         "{\"type\":\"cli\",\"ok\":false,"
         "\"commands\":[\"help\",\"version\",\"part\",\"wifi\",\"sensor\","
-        "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"device\","
-        "\"selftest\",\"factory reset\"]}");
+        "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"crash\","
+        "\"crash clear\",\"device\",\"selftest\",\"factory reset\"]}");
 }
 
 static void cmd_help(void)
@@ -137,6 +138,42 @@ static void cmd_log(void)
     host_link_send_json(json);
 }
 
+static void cmd_crash(void)
+{
+    static char record_json[768];
+    static char line[800];
+    char head[96];
+
+    (void)snprintf(head, sizeof(head),
+                   "{\"type\":\"crash\",\"count\":%u,\"capacity\":%u}",
+                   (unsigned)crash_service_count(),
+                   (unsigned)crash_service_capacity());
+    host_link_send_json(head);
+
+    uint16_t count = crash_service_count();
+    for (uint16_t i = 0; i < count; ++i) {
+        crash_record_t record;
+        if (!crash_service_get(i, &record)) {
+            continue;
+        }
+        if (crash_record_to_json(&record, record_json, sizeof(record_json)) == 0u) {
+            continue;
+        }
+        (void)snprintf(line, sizeof(line), "{\"type\":\"crash\",\"record\":%s}",
+                       record_json);
+        host_link_send_json(line);
+    }
+}
+
+static void cmd_crash_clear(void)
+{
+    bool ok = crash_service_clear() == 0;
+    host_link_send_json(ok ? "{\"type\":\"cli\",\"cmd\":\"crash\","
+                             "\"action\":\"clear\",\"ok\":true}"
+                           : "{\"type\":\"cli\",\"cmd\":\"crash\","
+                             "\"action\":\"clear\",\"ok\":false}");
+}
+
 static void cmd_device(void)
 {
     const device_info_t *info = device_service_info();
@@ -201,6 +238,8 @@ void cli_service_handle_line(const char *line, uint32_t length)
     case CLI_OTA_STATUS:    cmd_ota_status(); break;
     case CLI_OTA_ABORT:     cmd_ota_abort(); break;
     case CLI_LOG:           cmd_log(); break;
+    case CLI_CRASH:         cmd_crash(); break;
+    case CLI_CRASH_CLEAR:   cmd_crash_clear(); break;
     case CLI_DEVICE:        cmd_device(); break;
     case CLI_SELFTEST:      cmd_selftest(); break;
     case CLI_FACTORY_RESET: cmd_factory_reset(); break;

@@ -142,6 +142,20 @@ SECTIONS
     __bss_end__ = _ebss;
   } > RAM
 
+  /* Survives a system reset: the CMSIS startup code only copies .data and
+   * zeroes .bss. The crash handler stores its record here so the next boot can
+   * persist it. It sits below the heap/stack and well above the bootloader's
+   * own RAM usage (bootloader.ld keeps its stack at the top of SRAM). */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(8);
+    __noinit_start__ = .;
+    KEEP(*(.noinit));
+    KEEP(*(.noinit*));
+    . = ALIGN(8);
+    __noinit_end__ = .;
+  } > RAM
+
   .heap (NOLOAD) :
   {
     . = ALIGN(8);

@@ -1,6 +1,6 @@
 # Known issues and unverified items
 
-Last updated: 2026-11-07.
+Last updated: 2026-11-13.
 
 Everything below is a statement about what has **not** been verified. Nothing
 in this list has been measured on real STM32C562RE silicon; the repository had
@@ -25,14 +25,15 @@ no board available while it was written.
 | Boot confirmation, three-failure rollback and backup restore | logic tested on host; **not verified on hardware** |
 | Device serial derived from the MCU UID and persisted | formatting/round-trip tested on host; UID register read **not verified on hardware** |
 | Production self-test (`selftest`: flash/I2C/ADC/BLE) | decision logic implemented; **not executed on hardware** |
+| Crash capture (HardFault/MemManage/BusFault/UsageFault) and `.noinit` hand-off | decoder and flash ring tested on host; **exception entry and persistence across reset not executed on hardware** |
 
-Host-side logic tests (1,581 assertions) cover CRC, frame parsing/resync,
+Host-side logic tests (1,706 assertions) cover CRC, frame parsing/resync,
 record store torn-write recovery, image validation (size, vectors, CRC,
 SHA-256, Ed25519), OTA state machine and resume/truncation, install/copy
 decisions, signature failure, downgrade rejection, CLI parsing, rollback
-policy, error codes/fault log, credential bounds, device identity and
-power-loss fallbacks. They use an in-memory fake flash and do not model real
-flash timing.
+policy, error codes/fault log, credential bounds, device identity, crash
+record decoding/ring overwrite/corruption tolerance and power-loss fallbacks.
+They use an in-memory fake flash and do not model real flash timing.
 
 ## 2. Clock and register-level assumptions
 

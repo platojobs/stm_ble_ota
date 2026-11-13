@@ -14,6 +14,8 @@
  *   sensor
  *   ota start | ota status | ota abort
  *   log
+ *   crash | crash log
+ *   crash clear
  *   device
  *   selftest
  *   factory reset
@@ -39,6 +41,8 @@ typedef enum {
     CLI_OTA_STATUS,
     CLI_OTA_ABORT,
     CLI_LOG,
+    CLI_CRASH,
+    CLI_CRASH_CLEAR,
     CLI_DEVICE,
     CLI_SELFTEST,
     CLI_FACTORY_RESET,

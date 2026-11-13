@@ -90,6 +90,12 @@ cli_command_t cli_parse(const char *line, uint32_t length)
     if (strcmp(buf, "log") == 0 || strcmp(buf, "faults") == 0) {
         return CLI_LOG;
     }
+    if (strcmp(buf, "crash") == 0 || strcmp(buf, "crash log") == 0) {
+        return CLI_CRASH;
+    }
+    if (strcmp(buf, "crash clear") == 0) {
+        return CLI_CRASH_CLEAR;
+    }
     if (strcmp(buf, "device") == 0 || strcmp(buf, "info") == 0) {
         return CLI_DEVICE;
     }

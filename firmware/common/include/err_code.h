@@ -89,6 +89,7 @@ typedef enum {
     ERR_CODE_ROLLBACK          = 0x0703,
     ERR_CODE_NOT_IMPLEMENTED   = 0x0704,
     ERR_CODE_SELFTEST_FAILED   = 0x0705,
+    ERR_CODE_CRASH_DETECTED    = 0x0706,
 } err_code_t;
 
 /** Translate an OTA reason code into the shared error space. */

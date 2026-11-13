@@ -46,6 +46,8 @@ set(COMMON_SOURCES
     ${COMMON_DIR}/src/err_code.c
     ${COMMON_DIR}/src/error_log.c
     ${COMMON_DIR}/src/device_info.c
+    ${COMMON_DIR}/src/crash_dump.c
+    ${COMMON_DIR}/src/crash_log.c
 )
 
 add_executable(unit_tests
@@ -56,6 +58,7 @@ add_executable(unit_tests
     test_v2_features.c
     test_err_codes.c
     test_error_log.c
+    test_crash.c
     test_main.c
 )
 

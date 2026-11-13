@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Dates are the actual
 development dates; versions follow semantic versioning.
 
+## [Unreleased]
+
+Not validated on hardware; see `KNOWN_ISSUES.md`.
+
+### Added
+
+- **Crash diagnostics**: HardFault/MemManage/BusFault/UsageFault handlers
+  capture the stacked R0–R3/R12/LR/PC/xPSR, CFSR/HFSR/MMFAR/BFAR, resolved
+  fault address, eight stack words and the firmware identity into `.noinit`
+  RAM, then reset. The next boot persists the record into an eight-slot flash
+  ring (bank 2 pages 50–57, one page per record). Read with CLI `crash` or the
+  BLE `crash` command; `crash clear` erases the ring. Recovery also raises
+  `CRASH_DETECTED` (0x0706) in the RAM fault log.
+
 ## [0.3.0] - 2026-11-07
 
 Not validated on hardware; see `KNOWN_ISSUES.md`.

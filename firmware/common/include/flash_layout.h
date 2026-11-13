@@ -85,10 +85,17 @@
 
 /* Device identity lives in bank 2, next to the other app-writable records:
  * the application executes from bank 1, so erasing these pages never stalls
- * instruction fetch. Pages 50..63 stay reserved. */
+ * instruction fetch. Pages 58..63 stay reserved. */
 #define FLASH_DEVICE_PAGE0          0x08060000u /* page 48                          */
 #define FLASH_DEVICE_PAGE1          0x08062000u /* page 49                          */
 #define FLASH_DEVICE_STORE_SIZE     (2u * FLASH_PAGE_SIZE)
+
+/* Persistent crash records: one record per 8 KB page, reused as a ring. Eight
+ * pages hold the last eight crashes; the remaining reserved pages stay free. */
+#define FLASH_CRASH_LOG_START       0x08064000u /* page 50                          */
+#define FLASH_CRASH_LOG_PAGES       8u
+#define FLASH_CRASH_LOG_CAPACITY    FLASH_CRASH_LOG_PAGES
+#define FLASH_CRASH_LOG_SIZE        (FLASH_CRASH_LOG_PAGES * FLASH_PAGE_SIZE)
 
 /* Maximum application image accepted by the OTA downloader. */
 #define FLASH_IMAGE_MAX_SIZE        FLASH_SLOT_A_SIZE
@@ -124,6 +131,13 @@
     (FLASH_DEVICE_PAGE1 + FLASH_PAGE_SIZE > \
      (FLASH_BANK2_RESERVED_START + FLASH_BANK2_RESERVED_SIZE))
 #error "Device-info store must fit in the bank 2 reserved area"
+#endif
+#if (FLASH_CRASH_LOG_START != (FLASH_DEVICE_PAGE1 + FLASH_PAGE_SIZE)) || \
+    (FLASH_CRASH_LOG_SIZE > \
+     (FLASH_BANK2_RESERVED_START + FLASH_BANK2_RESERVED_SIZE - \
+      FLASH_CRASH_LOG_START)) || \
+    (FLASH_CRASH_LOG_CAPACITY != FLASH_CRASH_LOG_PAGES)
+#error "Crash-log ring must follow the device-info store and fit in bank 2"
 #endif
 #if (FLASH_SLOT_B_START + FLASH_SLOT_B_SIZE) != FLASH_META_PAGE0
 #error "Slot B layout mismatch"

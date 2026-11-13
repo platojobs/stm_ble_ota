@@ -30,6 +30,7 @@ static const err_code_t k_all_codes[] = {
 
     ERR_CODE_WATCHDOG_RESET, ERR_CODE_BOOT_FAILED, ERR_CODE_ROLLBACK,
     ERR_CODE_NOT_IMPLEMENTED, ERR_CODE_SELFTEST_FAILED,
+    ERR_CODE_CRASH_DETECTED,
 };
 
 #define ALL_CODE_COUNT (sizeof(k_all_codes) / sizeof(k_all_codes[0]))
