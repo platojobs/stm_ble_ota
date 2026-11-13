@@ -268,7 +268,7 @@ Reference sizes from this tree: bootloader 24,568 B flash / ~56 B static RAM,
 application 28,936 B flash / ~3.9 KB static RAM (plus a 4 KB stack). Both fit
 their regions.
 
-Build and run host tests (native compiler, `-Werror` in CI):
+Build and run host tests (native compiler, `-Werror` enabled):
 
 ```bash
 cmake -S tests -B build-host -DWERROR=ON
@@ -276,10 +276,21 @@ cmake --build build-host
 ./build-host/unit_tests
 ```
 
-CI (`.github/workflows/ci.yml`) builds both images and the host tests with
-`-Werror`, runs `cppcheck`, and on a `v*` tag creates a GitHub Release with the
-bootloader `.bin`, signed application `.ota` and `SHA256SUMS`. The release job
-requires the `OTA_SIGNING_KEY_B64` repository secret (base64 PKCS#8 PEM).
+Static analysis runs locally over the firmware and the host tests:
+
+```bash
+cppcheck --enable=warning,performance,portability --error-exitcode=1 \
+  --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude \
+  --std=c11 -I firmware/common/include -I firmware/app/include \
+  -I firmware/bootloader/include -I firmware/vendor/stm32c5xx_dfp/Include \
+  -I firmware/vendor/cmsis/Include \
+  firmware/common/src firmware/app/src firmware/bootloader/src tests
+```
+
+The full local gate is: both firmware images build with zero warnings
+(`tools/build.sh`, `-Werror` on by default), the host suite passes, and
+`cppcheck` reports nothing. Everything runs on the developer machine; there is
+no hosted CI.
 
 ## Flash and debug (CLI only)
 
@@ -343,7 +354,7 @@ Key handling: the Ed25519 **public** key is compiled into the bootloader
 **reference/example key** for the demo flow only — never use it on a real
 device. Private keys are never committed: generate your own keypair with
 `keygen`, replace the public key and rebuild the bootloader, then keep the
-private half offline or in the CI secret store. The example private key at
+private half offline or in your own release key store. The example private key at
 `tools/keys/reference_ed25519_private.pem` is git-ignored and exists only on
 this machine.
 
@@ -360,7 +371,8 @@ python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```
 
-`--key` may be replaced by the `OTA_SIGNING_KEY` environment variable in CI.
+`--key` may be replaced by the `OTA_SIGNING_KEY` environment variable, which is
+what `tools/build.sh` uses when `SIGN_KEY` is not given.
 
 Provisioning over the PC link:
 
@@ -409,8 +421,8 @@ and the same binary OTA frames, with no dependence on the co-processor.
    failure also appears in `log` as `SELFTEST_FAILED`.
 5. **OTA gate:** every field update must be an `.ota` package signed with the
    production key; the bootloader rejects an invalid signature and keeps the
-   running image. Keep the private key offline or in the release CI secret
-   (`OTA_SIGNING_KEY_B64`); never in the repository or on a device.
+   running image. Keep the private key offline, or in the secret store of your
+   own release pipeline; never in the repository or on a device.
 6. **Access protection:** consider read-out protection and a locked debug
    port before shipping. Debug/flash access bypasses signature, downgrade and
    factory-reset checks entirely; see `KNOWN_ISSUES.md`.

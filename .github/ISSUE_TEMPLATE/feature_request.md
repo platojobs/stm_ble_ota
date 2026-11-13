@@ -21,7 +21,6 @@ frames or partition sizes, note the impact.
 - [ ] Bootloader / install policy
 - [ ] Host tools (`tools/`)
 - [ ] Documentation
-- [ ] CI
 
 ## Constraints to keep in mind
 

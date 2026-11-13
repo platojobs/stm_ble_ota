@@ -7,7 +7,7 @@ What changed and why. One logical change per pull request.
 - [ ] Bug fix
 - [ ] Feature
 - [ ] Documentation
-- [ ] Build / CI
+- [ ] Build
 - [ ] Refactor (no behaviour change)
 
 ## Verification
@@ -16,7 +16,8 @@ Paste the commands and their results:
 
 - [ ] `cmake --build build-host && ./build-host/unit_tests`
 - [ ] `./tools/build.sh` (ARM, `-Werror`)
-- [ ] `cppcheck --enable=warning,performance,portability ...` clean (CI runs it)
+- [ ] `cppcheck --enable=warning,performance,portability ...` clean
+  (command in `CONTRIBUTING.md`)
 - [ ] Signature packaging still works (`firmware_tool.py pack` then `inspect`)
 - [ ] Tested on real hardware — describe the setup, or state that it was not
 

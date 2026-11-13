@@ -10,7 +10,7 @@ changes small, buildable and documented.
 - Read [docs/protocol.md](docs/protocol.md) and
   [docs/error_codes.md](docs/error_codes.md) before touching frames, OTA state
   or error values. Numeric codes and partitions are contracts.
-- Never commit private keys, real WiFi credentials or CI secrets.
+- Never commit private keys, real WiFi credentials or release secrets.
   `tools/keys/` is git-ignored.
 
 ## Build and test
@@ -27,7 +27,7 @@ cmake -S tests -B build-host -DWERROR=ON -G Ninja
 cmake --build build-host
 ./build-host/unit_tests
 
-# static analysis (same command as CI)
+# static analysis (run before committing)
 cppcheck --enable=warning,performance,portability --error-exitcode=1 \
   --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude \
   --std=c11 -I firmware/common/include -I firmware/app/include \
@@ -36,8 +36,9 @@ cppcheck --enable=warning,performance,portability --error-exitcode=1 \
   firmware/common/src firmware/app/src firmware/bootloader/src tests
 ```
 
-A change is ready when both firmware images build with zero warnings and the
-host suite passes. Add host tests for platform-independent logic (common
+A change is ready when both firmware images build with zero warnings, the host
+suite passes, and `cppcheck` is clean — all three run locally, there is no
+hosted CI to fall back on. Add host tests for platform-independent logic (common
 modules) and document what cannot be tested without hardware.
 
 ## Code style

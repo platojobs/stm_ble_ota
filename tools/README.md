@@ -26,8 +26,8 @@ shipped with the repository. It is not a secret — the matching private key is
 not in the tree — but it is **not for production**: anyone with the reference
 private key can sign an image the reference bootloader accepts. Before shipping
 a real device, generate a fresh key pair, replace the compiled-in public key,
-rebuild and re-flash the bootloader, and keep the private key offline or in a
-CI secret. Rotation and incident handling are described in
+rebuild and re-flash the bootloader, and keep the private key offline or in
+your own release key store. Rotation and incident handling are described in
 `../docs/security.md`.
 
 ```bash

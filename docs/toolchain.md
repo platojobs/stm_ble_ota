@@ -11,13 +11,14 @@ All build steps are command-line only. No IDE plugin, no vendor code generator.
 | Ninja | 1.12 | 1.10 | Makefiles also work |
 | Python | 3.13 | 3.10 | host tools only |
 | cryptography | 42 | 41 | package signing |
-| cppcheck | 2.18 | 2.13 | CI static analysis |
+| cppcheck | 2.18 | 2.13 | static analysis |
 | pyserial | 3.5 | 3.4 | serial host mode |
 | bleak | 0.22 | 0.22 | BLE host mode |
 
-CI uses the Ubuntu `gcc-arm-none-eabi` package (currently 13.2.1) and prints
-the exact versions in the build log. A local build with a different compiler
-may produce different code sizes; the map files are the reference.
+The reference binaries in this repository were produced with the versions
+above on macOS. Builds are local: there is no hosted CI, so record the compiler
+version with every release. A different compiler may produce different code
+sizes; the map files are the reference.
 
 ## Discovery order
 
@@ -42,8 +43,9 @@ VERSION=0.3.0 BUILD_ID=20 \
   tools/build.sh
 ```
 
-The script writes `SHA256SUMS` next to the binaries. CI does the same and
-attaches the signed `.ota` to the GitHub Release for tags `v*`.
+The script writes `SHA256SUMS` next to the binaries. A release is published by
+attaching that signed `.ota`, the bootloader binary and the checksum file to the
+tag by hand.
 
 ## Version injection
 

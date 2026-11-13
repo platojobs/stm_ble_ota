@@ -32,12 +32,14 @@ its own.
 ## Tags and releases
 
 - Tag format: `vX.Y.Z`, annotated, created only on `main`.
-- A tag triggers CI, which builds both images, runs host tests and cppcheck,
-  and creates a GitHub Release containing:
+- After tagging, build the release on a machine that holds the signing key and
+  attach to the tag:
   - `stm_ble_ota_bootloader.bin` / `.hex`
-  - `stm_ble_ota_app-<version>.ota` (signed when the secret exists)
+  - `stm_ble_ota_app-<version>.ota` (signed with `SIGN_KEY`)
   - `stm_ble_ota_app.bin` / `.hex`
   - `SHA256SUMS`
+- Build and publish by hand (`VERSION=… SIGN_KEY=… tools/build.sh`); the
+  repository has no hosted CI, so a tag does not trigger anything.
 - Tags are never moved or reused. Never force-push over published history.
 - `CHANGELOG.md` gets a dated section for every release before the tag is
   created.

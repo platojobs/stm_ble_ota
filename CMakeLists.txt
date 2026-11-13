@@ -71,7 +71,7 @@ set(BOOT_INCLUDES   ${CMAKE_CURRENT_SOURCE_DIR}/firmware/bootloader/include)
 
 set(COMMON_WARNINGS -Wall -Wextra -Wshadow -Wdouble-promotion -Wundef)
 
-# Optional strict mode used by CI and tools/build.sh. It is an option rather
+# Optional strict mode used by tools/build.sh. It is an option rather
 # than CMAKE_C_FLAGS so the toolchain flags from the toolchain file survive.
 option(WERROR "Treat compiler warnings as errors" OFF)
 if(WERROR)

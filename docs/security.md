@@ -12,7 +12,7 @@ Ed25519 public key**. It ships so the example can be exercised out of the box
 and must **never** be used on a real device: the matching private key is only
 in the maintainer's local `tools/keys/` directory, which is git-ignored, but it
 may still be leaked or recreated. The repository contains no private key, no
-seed and no CI secret.
+seed and no release secret.
 
 ### Generate a production key pair
 
@@ -33,9 +33,10 @@ and record the key fingerprint in the release notes.
 
 - Keep the private key in an HSM, a signing service, or at minimum an
   encrypted offline volume; never in this repository.
-- CI signs with `OTA_SIGNING_KEY_B64` (base64 PKCS#8 PEM) stored as a
-  repository/environment secret with restricted access. Do not print it, do
-  not commit it, do not reuse it across products.
+- Signing happens on a machine you control, using the private key read from an
+  offline volume (or from a secret store in your own release pipeline, for
+  example the `OTA_SIGNING_KEY` environment variable). Do not print the key,
+  do not commit it, do not reuse it across products.
 - Keep a second copy offline with an access log; a lost key means a bootloader
   update is required to trust new images.
 - Keep the raw public key in the bootloader image inventory, one fingerprint

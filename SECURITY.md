@@ -37,7 +37,8 @@ unless they contradict that documented boundary.
 
 ## Secrets in the repository
 
-Private signing keys, WiFi passwords for real networks, and CI secrets must
-never be committed. `tools/keys/` is git-ignored; CI uses the
-`OTA_SIGNING_KEY_B64` secret. If you find a committed secret, report it
-privately and rotate it immediately.
+Private signing keys, WiFi passwords for real networks, and release secrets
+must never be committed. `tools/keys/` is git-ignored; builds read the signing
+key from a local file or the `OTA_SIGNING_KEY` environment variable on your own
+machine. If you find a committed secret, report it privately and rotate it
+immediately.

@@ -252,7 +252,7 @@ build/arm/SHA256SUMS
 本仓库实测尺寸：bootloader 占用 24,568 B Flash / 约 56 B 静态 RAM，APP 占用
 28,936 B Flash / 约 3.9 KB 静态 RAM（另加 4 KB 栈），均在各自分区内。
 
-编译并运行主机测试（原生编译器，CI 中开启 `-Werror`）：
+编译并运行主机测试（原生编译器，开启 `-Werror`）：
 
 ```bash
 cmake -S tests -B build-host -DWERROR=ON
@@ -260,10 +260,20 @@ cmake --build build-host
 ./build-host/unit_tests
 ```
 
-CI（`.github/workflows/ci.yml`）以 `-Werror` 构建两个镜像与主机测试，运行
-`cppcheck`；推送 `v*` 标签时创建 GitHub Release，附 bootloader `.bin`、签名
-后的 APP `.ota` 与 `SHA256SUMS`。发布任务需要仓库 secret
-`OTA_SIGNING_KEY_B64`（base64 编码的 PKCS#8 PEM 私钥）。
+静态分析在本地对固件与主机测试执行：
+
+```bash
+cppcheck --enable=warning,performance,portability --error-exitcode=1 \
+  --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude \
+  --std=c11 -I firmware/common/include -I firmware/app/include \
+  -I firmware/bootloader/include -I firmware/vendor/stm32c5xx_dfp/Include \
+  -I firmware/vendor/cmsis/Include \
+  firmware/common/src firmware/app/src firmware/bootloader/src tests
+```
+
+完整的本地验收流程是：两个镜像零告警编译通过（`tools/build.sh` 默认开启
+`-Werror`）、主机测试全部通过、`cppcheck` 无问题。全部在开发机上执行，仓库
+不依赖任何托管 CI。
 
 ## 烧录与调试（纯命令行）
 
@@ -323,7 +333,7 @@ python3 -m pip install -r tools/requirements.txt
 （`firmware/common/include/ota_public_key.h`）。仓库内置的只是**参考/示例
 密钥**，仅用于跑通示例 OTA，绝不能用于任何真实设备。私钥从不提交到仓库：
 用 `firmware_tool.py keygen` 自己生成密钥对，替换公钥并重新编译 bootloader，
-私钥保存在离线环境或 CI secret 中。示例私钥
+私钥保存在离线环境或自有发布流水线的密钥库中。示例私钥
 `tools/keys/reference_ed25519_private.pem` 被 git 忽略，仅存在于本机。
 
 ```bash
@@ -339,7 +349,8 @@ python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
 ```
 
-CI 中可用环境变量 `OTA_SIGNING_KEY` 替代 `--key`。
+可用环境变量 `OTA_SIGNING_KEY` 替代 `--key`；`tools/build.sh` 在未提供
+`SIGN_KEY` 时正是读取该变量。
 
 通过 PC 链路配网：
 
@@ -384,8 +395,8 @@ python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --ver
    0x01 Flash、0x02 I2C/SHT30、0x04 ADC、0x08 BLE 就绪。失败同时会以
    `SELFTEST_FAILED` 记入 `log`。
 5. **OTA 门禁：** 现场升级必须使用生产密钥签名的 `.ota` 包；bootloader 会
-   拒绝无效签名并保留当前运行镜像。私钥保存在离线环境或 Release CI secret
-   （`OTA_SIGNING_KEY_B64`），不得进入仓库或设备。
+   拒绝无效签名并保留当前运行镜像。私钥保存在离线环境，或自有发布流水线的
+   密钥库中，不得进入仓库或设备。
 6. **访问保护：** 出货前建议开启读出保护并锁住调试口。调试/烧录接口会完全
    绕过签名、防降级与恢复出厂检查；见 `KNOWN_ISSUES.md`。
 7. **凭据：** WiFi 配网信息在 Flash 中只是混淆，不是加密。不要在设备上部署

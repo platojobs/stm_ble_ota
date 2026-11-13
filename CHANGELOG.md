@@ -9,10 +9,10 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
 
 ### Added
 
-- **CI**: GitHub Actions runs the host tests and the ARM build with `-Werror`,
-  runs `cppcheck` (`warning,performance,portability` over firmware and tests),
-  uploads firmware artefacts and, for `v*` tags, builds a signed `.ota` with
-  `OTA_SIGNING_KEY_B64` and publishes a GitHub Release with `SHA256SUMS`.
+- **Local verification gate**: `tools/build.sh` builds both images with
+  `-Werror` and writes `SHA256SUMS`, the host suite covers the platform-neutral
+  logic, and `cppcheck` (`warning,performance,portability` over firmware and
+  tests) is part of the documented pre-commit checklist. No hosted CI.
 - **Version injection**: CMake derives `FW_VERSION`/`FW_BUILD_ID` from
   `git describe` and `tools/build.sh` wraps configure, build, packaging and
   checksums; `-DFW_VERSION=1.2.3 -DFW_BUILD_ID=42` overrides both.
@@ -93,7 +93,8 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
 ### Notes
 
 - Signing keys are generated locally (`tools/keys/` is git-ignored); private
-  keys are never committed. Release builds supply `OTA_SIGNING_KEY` from CI.
+  keys are never committed. Releases are built locally with `SIGN_KEY` or the
+  `OTA_SIGNING_KEY` environment variable.
 - Bootloader 24.6 KB / 32 KB, app 28.8 KB / 96 KB; both fit with margin.
 
 ## [0.1.0] - 2026-11-07
