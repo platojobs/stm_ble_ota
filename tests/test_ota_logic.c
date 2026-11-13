@@ -97,6 +97,7 @@ static boot_install_io_t make_boot_io(install_context_t *ctx)
     io.flash_program = ctx_program;
     io.flash_read = ctx_read;
     io.metadata_save = boot_metadata_save;
+    io.hardware_id = 0x0050u;
     return io;
 }
 
@@ -751,7 +752,7 @@ TEST_CASE(ota_receiver_full_transfer)
     begin.version = 0x00010001u;
     begin.build_id = 42u;
     begin.hardware_id = 0x0050u;
-    begin.reserved = 0u;
+    begin.security_version = 0u;
     fill_manifest_sha(&begin, image, sizeof(image));
 
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_NONE);
@@ -804,7 +805,7 @@ TEST_CASE(ota_receiver_rejects_bad_final_crc)
     begin.version = 0x00010001u;
     begin.build_id = 1u;
     begin.hardware_id = 0x0050u;
-    begin.reserved = 0u;
+    begin.security_version = 0u;
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_NONE);
 
     ASSERT_EQ(ota_receiver_data(&receiver, 0u, image, sizeof(image), 100u), OTA_REASON_NONE);
@@ -834,7 +835,7 @@ TEST_CASE(ota_receiver_rejects_out_of_order)
     begin.version = 0x00010001u;
     begin.build_id = 1u;
     begin.hardware_id = 0x0050u;
-    begin.reserved = 0u;
+    begin.security_version = 0u;
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_NONE);
 
     ASSERT_EQ(ota_receiver_data(&receiver, 16u, image + 16u, 16u, 10u),
@@ -856,7 +857,7 @@ TEST_CASE(ota_receiver_timeout)
     begin.version = 0x00010001u;
     begin.build_id = 1u;
     begin.hardware_id = 0x0050u;
-    begin.reserved = 0u;
+    begin.security_version = 0u;
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 1000u), OTA_REASON_NONE);
 
     ota_receiver_tick(&receiver, 12000u);
@@ -879,8 +880,97 @@ TEST_CASE(ota_receiver_rejects_downgrade)
     begin.version = 0x00010000u; /* older than installed */
     begin.build_id = 1u;
     begin.hardware_id = 0x0050u;
-    begin.reserved = 0u;
+    begin.security_version = 0u;
     ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_BAD_VERSION);
+}
+
+TEST_CASE(ota_receiver_rejects_security_downgrade)
+{
+    flash_setup();
+
+    receiver_context_t ctx;
+    ota_receiver_t receiver;
+    ASSERT_EQ(receiver_setup(&ctx, &receiver, 0x0050u), 0);
+    ota_receiver_set_installed_version(&receiver, 0x00020000u);
+    ota_receiver_set_installed_security_version(&receiver, 3u);
+
+    ota_begin_payload_t begin;
+    memset(&begin, 0, sizeof(begin));
+    begin.image_size = 4096u;
+    begin.image_crc32 = 0x11111111u;
+    begin.version = 0x00020001u; /* newer version, older security level */
+    begin.build_id = 1u;
+    begin.hardware_id = 0x0050u;
+    begin.security_version = 2u;
+    memset(begin.signature, 0x5A, sizeof(begin.signature));
+
+    ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_BAD_VERSION);
+    ASSERT_EQ(receiver.state, OTA_STATE_ERROR);
+}
+
+TEST_CASE(ota_receiver_rejects_hardware_mismatch)
+{
+    flash_setup();
+
+    receiver_context_t ctx;
+    ota_receiver_t receiver;
+    ASSERT_EQ(receiver_setup(&ctx, &receiver, 0x0050u), 0);
+
+    ota_begin_payload_t begin;
+    memset(&begin, 0, sizeof(begin));
+    begin.image_size = 4096u;
+    begin.image_crc32 = 0x11111111u;
+    begin.version = 0x00010001u;
+    begin.build_id = 1u;
+    begin.hardware_id = 0x0052u; /* different board profile */
+    memset(begin.signature, 0x5A, sizeof(begin.signature));
+
+    ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_BAD_HARDWARE);
+    ASSERT_EQ(receiver.state, OTA_STATE_ERROR);
+    ASSERT_EQ(receiver.last_reason, OTA_REASON_BAD_HARDWARE);
+}
+
+TEST_CASE(ota_receiver_session_timeout_clears_partial)
+{
+    flash_setup();
+
+    receiver_context_t ctx;
+    ota_receiver_t receiver;
+    ASSERT_EQ(receiver_setup(&ctx, &receiver, 0x0050u), 0);
+
+    uint8_t image[4096];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ota_begin_payload_t begin;
+    make_manifest(&begin, image, sizeof(image), crc, 0x00010001u);
+
+    ASSERT_EQ(ota_receiver_begin(&receiver, &begin, 0u), OTA_REASON_NONE);
+    ASSERT_EQ(feed_range(&receiver, image, 0u, sizeof(image), 1024u),
+              OTA_REASON_NONE);
+
+    /* 10 s of silence suspends the transfer but keeps the prefix. */
+    ota_receiver_tick(&receiver, 15000u);
+    ASSERT_EQ(receiver.state, OTA_STATE_ERROR);
+    ASSERT_TRUE(receiver.resumable);
+    ota_metadata_t meta;
+    ASSERT_EQ(ota_metadata_read(&ctx.install.meta_store, &meta), 0);
+    ASSERT_EQ(meta.received_bytes, (uint32_t)sizeof(image));
+    /* Persisted as RECEIVING so a reboot can still resume the prefix. */
+    ASSERT_EQ(meta.state, (uint32_t)OTA_STATE_RECEIVING);
+
+    /* 60 s without a new BEGIN aborts the session and clears the prefix. */
+    ota_receiver_tick(&receiver, 76000u);
+    ASSERT_EQ(receiver.state, OTA_STATE_ERROR);
+    ASSERT_EQ(receiver.last_reason, OTA_REASON_TIMEOUT);
+    ASSERT_FALSE(receiver.resumable);
+    ASSERT_EQ(receiver.partial_active, 0u);
+    ASSERT_EQ(receiver.received, 0u);
+    ASSERT_EQ(receiver.chunk_count, 0u);
+
+    ASSERT_EQ(ota_metadata_read(&ctx.install.meta_store, &meta), 0);
+    ASSERT_EQ(meta.state, (uint32_t)OTA_STATE_ERROR);
+    ASSERT_EQ(meta.received_bytes, 0u);
+    ASSERT_EQ(meta.chunk_count, 0u);
+    ASSERT_EQ(meta.partial_crc32, 0xFFFFFFFFu);
 }
 
 TEST_CASE(ota_receiver_rejects_unsigned_begin)
@@ -1052,6 +1142,8 @@ static void prepare_ready_metadata(install_context_t *ctx, uint32_t image_size,
     meta.image_crc32 = crc;
     meta.image_version = version;
     meta.previous_version = previous_version;
+    meta.hardware_id = 0x0050u;
+    meta.image_security_version = 1u;
     ASSERT_EQ(boot_metadata_save(ctx, &meta), 0);
 }
 
@@ -1174,6 +1266,55 @@ TEST_CASE(boot_install_rejects_downgrade)
     ASSERT_EQ(result.decision, BOOT_DECISION_STAY);
 }
 
+TEST_CASE(boot_install_rejects_security_rollback)
+{
+    flash_setup();
+
+    install_context_t ctx;
+    ASSERT_EQ(install_ctx_init(&ctx), 0);
+
+    uint8_t image[512];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_B_START, image, sizeof(image)), 0);
+    prepare_ready_metadata(&ctx, sizeof(image), crc, 0x00020000u, 0u);
+
+    /* The running image carries a newer security counter than the candidate. */
+    ota_metadata_t meta;
+    ASSERT_EQ(ota_metadata_read(&ctx.meta_store, &meta), 0);
+    meta.running_security_version = 2u;
+    ASSERT_EQ(boot_metadata_save(&ctx, &meta), 0);
+
+    boot_install_io_t io = make_boot_io(&ctx);
+    boot_install_result_t result;
+    ASSERT_EQ(boot_install_run(&io, &ctx.meta_store, &result), 0);
+    ASSERT_EQ(result.reason, OTA_REASON_BAD_VERSION);
+    ASSERT_EQ(result.decision, BOOT_DECISION_STAY);
+}
+
+TEST_CASE(boot_install_rejects_hardware_mismatch)
+{
+    flash_setup();
+
+    install_context_t ctx;
+    ASSERT_EQ(install_ctx_init(&ctx), 0);
+
+    uint8_t image[512];
+    uint32_t crc = build_test_image(image, sizeof(image), FLASH_SLOT_A_START);
+    ASSERT_EQ(fake_flash_program(&g_flash, FLASH_SLOT_B_START, image, sizeof(image)), 0);
+    prepare_ready_metadata(&ctx, sizeof(image), crc, 0x00020000u, 0u);
+
+    ota_metadata_t meta;
+    ASSERT_EQ(ota_metadata_read(&ctx.meta_store, &meta), 0);
+    meta.hardware_id = 0x0052u; /* image built for another board */
+    ASSERT_EQ(boot_metadata_save(&ctx, &meta), 0);
+
+    boot_install_io_t io = make_boot_io(&ctx); /* board is 0x0050 */
+    boot_install_result_t result;
+    ASSERT_EQ(boot_install_run(&io, &ctx.meta_store, &result), 0);
+    ASSERT_EQ(result.reason, OTA_REASON_BAD_HARDWARE);
+    ASSERT_EQ(result.decision, BOOT_DECISION_STAY);
+}
+
 TEST_CASE(boot_install_probes_factory_image)
 {
     flash_setup();
@@ -1218,6 +1359,9 @@ void run_ota_logic_tests(void)
     RUN_TEST(ota_receiver_rejects_out_of_order);
     RUN_TEST(ota_receiver_timeout);
     RUN_TEST(ota_receiver_rejects_downgrade);
+    RUN_TEST(ota_receiver_rejects_security_downgrade);
+    RUN_TEST(ota_receiver_rejects_hardware_mismatch);
+    RUN_TEST(ota_receiver_session_timeout_clears_partial);
     RUN_TEST(ota_receiver_rejects_unsigned_begin);
     RUN_TEST(ota_receiver_resumes_after_reset);
     RUN_TEST(ota_receiver_resume_truncates_corrupt_chunk);
@@ -1227,5 +1371,7 @@ void run_ota_logic_tests(void)
     RUN_TEST(boot_install_rejects_corrupt_slot_b);
     RUN_TEST(boot_install_retries_after_interrupted_copy);
     RUN_TEST(boot_install_rejects_downgrade);
+    RUN_TEST(boot_install_rejects_security_rollback);
+    RUN_TEST(boot_install_rejects_hardware_mismatch);
     RUN_TEST(boot_install_probes_factory_image);
 }

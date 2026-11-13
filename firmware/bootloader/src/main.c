@@ -36,6 +36,9 @@
 #define LED_PORT GPIOA
 #define LED_PIN  5u
 
+/* Must match APP_HARDWARE_ID: an image for another board is never installed. */
+#define BOOT_HARDWARE_ID 0x0050u
+
 static record_store_t g_meta_store;
 
 static void led_init(void)
@@ -168,6 +171,7 @@ int main(void)
         .flash_program = record_flash_program,
         .flash_read = record_flash_read,
         .metadata_save = metadata_save,
+        .hardware_id = BOOT_HARDWARE_ID,
     };
 
     boot_install_result_t result;

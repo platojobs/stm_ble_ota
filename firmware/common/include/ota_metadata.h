@@ -35,7 +35,7 @@
 #include <stdbool.h>
 
 #define OTA_METADATA_MAGIC 0x4F4D4554u /* "OMET" */
-#define OTA_VERSION_ID     2u
+#define OTA_VERSION_ID     3u           /* v3 adds security-version tracking */
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -48,6 +48,13 @@ typedef struct __attribute__((packed)) {
     uint32_t boot_attempts;    /* consecutive boots without APP confirmation   */
     uint32_t boot_slot;        /* FLASH_SLOT_A_START                           */
     uint32_t previous_version; /* version that was running before this upgrade */
+
+    /* Anti-rollback counters. The security version may only increase; the
+     * bootloader refuses an image whose value is below the running one. */
+    uint32_t image_security_version;
+    uint32_t previous_security_version;
+    uint32_t running_security_version;
+    uint32_t backup_security_version;
 
     /* Resume bookkeeping, persisted every OTA_RESUME_CHUNK_SIZE bytes. */
     uint32_t received_bytes;   /* contiguous valid prefix in slot B            */

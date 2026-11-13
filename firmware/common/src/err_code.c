@@ -41,6 +41,7 @@ static const err_code_entry_t k_codes[] = {
     { ERR_CODE_OTA_TIMEOUT,              "OTA_TIMEOUT",              "ota"     },
     { ERR_CODE_OTA_ABORTED,              "OTA_ABORTED",              "ota"     },
     { ERR_CODE_OTA_BAD_VERSION,          "OTA_BAD_VERSION",          "ota"     },
+    { ERR_CODE_OTA_BAD_HARDWARE,         "OTA_BAD_HARDWARE",         "ota"     },
 
     { ERR_CODE_IMAGE_SIZE,               "IMAGE_SIZE",               "image"   },
     { ERR_CODE_IMAGE_VECTOR,             "IMAGE_VECTOR",             "image"   },
@@ -111,6 +112,7 @@ err_code_t err_code_from_ota_reason(ota_reason_t reason)
     case OTA_REASON_ABORTED:       return ERR_CODE_OTA_ABORTED;
     case OTA_REASON_BAD_VERSION:   return ERR_CODE_OTA_BAD_VERSION;
     case OTA_REASON_BAD_SIGNATURE: return ERR_CODE_IMAGE_SIGNATURE;
+    case OTA_REASON_BAD_HARDWARE:  return ERR_CODE_OTA_BAD_HARDWARE;
     default:                       return ERR_CODE_INVALID_ARG;
     }
 }

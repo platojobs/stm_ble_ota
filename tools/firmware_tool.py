@@ -54,10 +54,11 @@ import zlib
 from pathlib import Path
 
 PACKAGE_MAGIC = b"OTAP"
-PACKAGE_FORMAT = 2
+PACKAGE_FORMAT = 3
 HEADER_V1 = struct.Struct("<4sHHIIII")  # 24 bytes
-HEADER_V2 = struct.Struct("<4sHHIIII32s64s")  # 120 bytes
-HEADER_SIZE = HEADER_V2.size
+HEADER_V2 = struct.Struct("<4sHHIIII32s64s")  # 120 bytes, no security version
+HEADER_V3 = struct.Struct("<4sHHIIIIH32s64s")  # 122 bytes, signed security version
+HEADER_SIZE = HEADER_V3.size
 
 SLOT_A_START = 0x08008000
 SLOT_A_SIZE = 96 * 1024
@@ -65,7 +66,8 @@ SRAM_START = 0x20000000
 SRAM_SIZE = 128 * 1024
 
 # Canonical signed blob: 32 bytes sha256 + size(u32) + version(u32) +
-# build_id(u32) + hardware_id(u16) + reserved(u16), little-endian.
+# build_id(u32) + hardware_id(u16) + security_version(u16), little-endian.
+# The last field was reserved in v0.3.0; it is now the anti-rollback counter.
 SIGNED_BLOB = struct.Struct("<32sIIIHH")
 
 
@@ -120,10 +122,13 @@ def public_key_pem(private_key) -> bytes:
 
 
 def sign_image(image: bytes, version: int, hardware_id: int, build_id: int,
-               private_key) -> tuple[bytes, bytes]:
+               security_version: int, private_key) -> tuple[bytes, bytes]:
     """Return (sha256, signature) for the canonical descriptor blob."""
+    if not 0 <= security_version <= 0xFFFF:
+        raise SystemExit(f"security version out of range: {security_version}")
     digest = hashlib.sha256(image).digest()
-    blob = SIGNED_BLOB.pack(digest, len(image), version, build_id, hardware_id, 0)
+    blob = SIGNED_BLOB.pack(digest, len(image), version, build_id, hardware_id,
+                            security_version)
     signature = private_key.sign(blob)
     if len(signature) != 64:
         raise SystemExit("Ed25519 signature must be 64 bytes")
@@ -177,10 +182,16 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             magic, fmt, hardware_id, version, size, crc, build_id = \
                 HEADER_V1.unpack_from(data, 0)
             image = data[HEADER_V1.size:]
+            security_version = 0
             sha = sig = None
-        elif fmt == PACKAGE_FORMAT:
+        elif fmt == 2:
             (magic, fmt, hardware_id, version, size, crc, build_id,
              sha, sig) = HEADER_V2.unpack_from(data, 0)
+            image = data[HEADER_V2.size:]
+            security_version = 0
+        elif fmt == PACKAGE_FORMAT:
+            (magic, fmt, hardware_id, version, size, crc, build_id,
+             security_version, sha, sig) = HEADER_V3.unpack_from(data, 0)
             image = data[HEADER_SIZE:]
         else:
             raise SystemExit(f"unsupported package format {fmt}")
@@ -190,6 +201,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             raise SystemExit("package CRC mismatch")
         report = image_report(image, version, hardware_id, build_id, sha, sig)
         report["package_format"] = fmt
+        report["security_version"] = security_version
     else:
         report = image_report(data, None, None, None)
 
@@ -219,18 +231,20 @@ def cmd_pack(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
     key = load_private_key(key_path)
-    digest, signature = sign_image(image, args.version, args.hw, args.build_id, key)
+    digest, signature = sign_image(image, args.version, args.hw, args.build_id,
+                                   args.security_version, key)
     report["sha256"] = digest.hex()
     report["signature"] = signature.hex()
 
-    header = HEADER_V2.pack(PACKAGE_MAGIC, PACKAGE_FORMAT, args.hw, args.version,
+    header = HEADER_V3.pack(PACKAGE_MAGIC, PACKAGE_FORMAT, args.hw, args.version,
                             len(image), report["image_crc32"], args.build_id,
-                            digest, signature)
+                            args.security_version, digest, signature)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(header + image)
     print(json.dumps({
         "output": str(args.output),
         "version": version_string(args.version),
+        "security_version": args.security_version,
         **{k: report[k] for k in
            ("image_size", "image_crc32_hex", "hardware_id", "build_id",
             "sha256", "signature")},
@@ -247,10 +261,16 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         magic, fmt, hardware_id, version, size, crc, build_id = \
             HEADER_V1.unpack_from(data, 0)
         image = data[HEADER_V1.size:]
+        security_version = 0
         sha = sig = None
-    elif fmt == PACKAGE_FORMAT:
+    elif fmt == 2:
         (magic, fmt, hardware_id, version, size, crc, build_id,
          sha, sig) = HEADER_V2.unpack_from(data, 0)
+        image = data[HEADER_V2.size:]
+        security_version = 0
+    elif fmt == PACKAGE_FORMAT:
+        (magic, fmt, hardware_id, version, size, crc, build_id,
+         security_version, sha, sig) = HEADER_V3.unpack_from(data, 0)
         image = data[HEADER_SIZE:]
     else:
         raise SystemExit(f"{args.package}: unsupported package format {fmt}")
@@ -264,6 +284,7 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         "version": version_string(version),
         "hardware_id": hardware_id,
         "build_id": build_id,
+        "security_version": security_version,
         "image_size": size,
     }
     if sha is not None:
@@ -316,6 +337,8 @@ def main() -> int:
                       help="hardware id (default 0x0050)")
     pack.add_argument("--build-id", type=lambda v: int(v, 0), default=0,
                       help="free-form build identifier")
+    pack.add_argument("--security-version", type=lambda v: int(v, 0), default=1,
+                      help="monotonic anti-rollback counter (default 1)")
     pack.add_argument("--key", type=Path, default=None,
                       help="Ed25519 private key PEM (or set OTA_SIGNING_KEY)")
     pack.add_argument("-o", "--output", type=Path, required=True)

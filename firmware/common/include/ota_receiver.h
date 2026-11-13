@@ -52,6 +52,8 @@ typedef struct {
     uint32_t image_crc32;
     uint32_t image_version;
     uint32_t previous_version;
+    uint32_t image_security_version;
+    uint32_t previous_security_version;
     uint32_t build_id;
     uint8_t  image_sha256[32];
     uint8_t  image_signature[64];
@@ -87,6 +89,10 @@ int ota_receiver_init(ota_receiver_t *receiver, const ota_receiver_io_t *io,
 /** Tell the receiver which version currently runs in slot A (downgrade check). */
 void ota_receiver_set_installed_version(ota_receiver_t *receiver, uint32_t version);
 
+/** Tell the receiver the security version of the running firmware. */
+void ota_receiver_set_installed_security_version(ota_receiver_t *receiver,
+                                                 uint32_t security_version);
+
 /**
  * Attach the metadata record loaded at boot. It is copied into every partial
  * save so running/backup/attempt fields are not clobbered by resume writes.
@@ -121,7 +127,12 @@ void ota_receiver_abort(ota_receiver_t *receiver, ota_reason_t reason,
 void ota_receiver_suspend(ota_receiver_t *receiver, ota_reason_t reason,
                           uint32_t now_ms);
 
-/** Call periodically; suspends a stalled transfer after 10 seconds of silence. */
+/**
+ * Call periodically. After 10 s of silence a transfer is suspended with its
+ * verified prefix kept for resume; after 60 s without a matching BEGIN the
+ * session is aborted and the partial metadata is cleared so the device cannot
+ * stay stuck in a half-upgraded state.
+ */
 void ota_receiver_tick(ota_receiver_t *receiver, uint32_t now_ms);
 
 /** Percentage 0..100 of accepted bytes. */

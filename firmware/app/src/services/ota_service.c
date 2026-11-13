@@ -28,6 +28,7 @@ static stm_frame_parser_t g_parser;
 static ota_notify_cb_t g_notify_cb;
 static void *g_notify_context;
 static uint32_t g_running_version;
+static uint32_t g_running_security_version;
 static bool g_reset_pending;
 static uint32_t g_reset_at_ms;
 
@@ -186,9 +187,16 @@ int ota_service_init(void)
     bool found = false;
     ota_metadata_load_or_default(&g_meta_store, &meta, &found);
     g_running_version = APP_VERSION;
+    g_running_security_version = APP_SECURITY_VERSION;
+    if (found && meta.running_security_version > g_running_security_version) {
+        g_running_security_version = meta.running_security_version;
+    }
     if (found && meta.state == OTA_STATE_INSTALLED &&
         meta.image_version != 0u) {
         g_running_version = meta.image_version;
+        if (meta.image_security_version > g_running_security_version) {
+            g_running_security_version = meta.image_security_version;
+        }
         if (meta.running_version == 0u) {
             ota_metadata_promote_running(&meta);
             (void)ota_metadata_write(&g_meta_store, &meta);
@@ -207,6 +215,8 @@ int ota_service_init(void)
         return -1;
     }
     ota_receiver_set_installed_version(&g_receiver, g_running_version);
+    ota_receiver_set_installed_security_version(&g_receiver,
+                                                g_running_security_version);
     ota_receiver_attach_metadata(&g_receiver, &meta);
     ota_receiver_restore(&g_receiver, &meta);
 

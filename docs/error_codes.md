@@ -50,6 +50,7 @@ domain block and this table is updated in the same commit.
 | `0x0305` | `ERR_CODE_OTA_TIMEOUT` | ota | Transfer stalled or link dropped |
 | `0x0306` | `ERR_CODE_OTA_ABORTED` | ota | Host requested abort |
 | `0x0307` | `ERR_CODE_OTA_BAD_VERSION` | ota | Version rejected (downgrade/format) |
+| `0x0308` | `ERR_CODE_OTA_BAD_HARDWARE` | ota | Image targets a different hardware profile |
 | `0x0401` | `ERR_CODE_IMAGE_SIZE` | image | Image size outside the target slot |
 | `0x0402` | `ERR_CODE_IMAGE_VECTOR` | image | Initial SP / reset vector not plausible |
 | `0x0403` | `ERR_CODE_IMAGE_CRC` | image | Stored image CRC check failed |
@@ -90,6 +91,7 @@ translation helpers produce the device-wide code:
 | `OTA_REASON_ABORTED` | `ERR_CODE_OTA_ABORTED` |
 | `OTA_REASON_BAD_VERSION` | `ERR_CODE_OTA_BAD_VERSION` |
 | `OTA_REASON_BAD_SIGNATURE` | `ERR_CODE_IMAGE_SIGNATURE` |
+| `OTA_REASON_BAD_HARDWARE` | `ERR_CODE_OTA_BAD_HARDWARE` |
 
 | `image_check_result_t` | Shared code |
 | --- | --- |

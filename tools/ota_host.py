@@ -88,11 +88,13 @@ REASON_NAMES = {
     7: "aborted",
     8: "bad_version",
     9: "bad_signature",
+    10: "bad_hardware",
 }
 
 PACKAGE_MAGIC = b"OTAP"
 PACKAGE_HEADER_V1 = struct.Struct("<4sHHIIII")
 PACKAGE_HEADER_V2 = struct.Struct("<4sHHIIII32s64s")
+PACKAGE_HEADER_V3 = struct.Struct("<4sHHIIIIH32s64s")
 
 SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb"
 CHAR_INFO = "0000ff01-0000-1000-8000-00805f9b34fb"
@@ -126,25 +128,31 @@ def load_image(path: Path) -> dict:
         raise ToolError(f"{path}: empty file")
 
     meta = {"image": raw, "version": 0, "hardware_id": 0x0050, "build_id": 0,
-            "source": str(path)}
+            "security_version": 0, "source": str(path)}
     if raw[:4] == PACKAGE_MAGIC:
         fmt = struct.unpack_from("<H", raw, 4)[0]
         if fmt == 1:
             magic, fmt, hardware_id, version, size, crc, build_id = \
                 PACKAGE_HEADER_V1.unpack_from(raw, 0)
             image = raw[PACKAGE_HEADER_V1.size:]
+            security_version = 0
             sha = sig = None
         elif fmt == 2:
             (magic, fmt, hardware_id, version, size, crc, build_id,
              sha, sig) = PACKAGE_HEADER_V2.unpack_from(raw, 0)
             image = raw[PACKAGE_HEADER_V2.size:]
+            security_version = 0
+        elif fmt == 3:
+            (magic, fmt, hardware_id, version, size, crc, build_id,
+             security_version, sha, sig) = PACKAGE_HEADER_V3.unpack_from(raw, 0)
+            image = raw[PACKAGE_HEADER_V3.size:]
         else:
             raise ToolError(f"{path}: unsupported package format {fmt}")
         if size != len(image) or crc != (zlib.crc32(image) & 0xFFFFFFFF):
             raise ToolError(f"{path}: package header/CRC mismatch")
         meta.update(image=image, version=version, hardware_id=hardware_id,
-                    build_id=build_id, package_crc=crc, image_sha256=sha,
-                    image_signature=sig)
+                    build_id=build_id, security_version=security_version,
+                    package_crc=crc, image_sha256=sha, image_signature=sig)
 
     image = meta["image"]
     if len(image) > SLOT_A_SIZE:
@@ -177,7 +185,7 @@ def begin_payload(meta: dict) -> bytes:
     sig = meta.get("image_signature") or b"\x00" * 64
     return struct.pack("<IIIIHH32s64s", meta["image_size"], meta["image_crc32"],
                        meta["version"], meta["build_id"],
-                       meta["hardware_id"], 0, sha, sig)
+                       meta["hardware_id"], meta["security_version"], sha, sig)
 
 
 def end_payload(meta: dict) -> bytes:

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #define OTA_RECEIVE_TIMEOUT_MS  10000u
+#define OTA_SESSION_TIMEOUT_MS  60000u
 #define OTA_PAGE_COUNT          (FLASH_SLOT_B_SIZE / FLASH_PAGE_SIZE)
 
 _Static_assert(OTA_RESUME_MAX_CHUNKS <= 32u, "chunk bitmask must fit uint32_t");
@@ -52,6 +53,8 @@ static int save_meta(ota_receiver_t *receiver, ota_state_t state,
     meta.image_size = receiver->image_size;
     meta.image_crc32 = receiver->image_crc32;
     meta.image_version = receiver->image_version;
+    meta.image_security_version = receiver->image_security_version;
+    meta.previous_security_version = receiver->previous_security_version;
     meta.build_id = receiver->build_id;
     meta.hardware_id = receiver->hardware_id;
     meta.previous_version = receiver->previous_version;
@@ -248,6 +251,12 @@ void ota_receiver_set_installed_version(ota_receiver_t *receiver, uint32_t versi
     receiver->previous_version = version;
 }
 
+void ota_receiver_set_installed_security_version(ota_receiver_t *receiver,
+                                                 uint32_t security_version)
+{
+    receiver->previous_security_version = security_version;
+}
+
 void ota_receiver_attach_metadata(ota_receiver_t *receiver,
                                   const ota_metadata_t *meta)
 {
@@ -281,6 +290,13 @@ void ota_receiver_restore(ota_receiver_t *receiver, const ota_metadata_t *meta)
     receiver->previous_version =
         (meta->previous_version != 0u) ? meta->previous_version : receiver->previous_version;
 
+    /* On a device that has already installed an OTA image, the metadata is the
+     * authority for the running security version. */
+    receiver->image_security_version = meta->image_security_version;
+    if (meta->running_security_version > receiver->previous_security_version) {
+        receiver->previous_security_version = meta->running_security_version;
+    }
+
     /* Only whole chunks are trusted after a reset. Report the chunk boundary
      * (not the raw received_bytes, which may point into a partially written
      * chunk) so OTA_QUERY and the post-BEGIN offset agree. */
@@ -312,6 +328,7 @@ static bool manifest_matches(const ota_receiver_t *receiver,
     if (receiver->image_size != begin->image_size ||
         receiver->image_crc32 != begin->image_crc32 ||
         receiver->image_version != begin->version ||
+        receiver->image_security_version != begin->security_version ||
         receiver->build_id != begin->build_id ||
         receiver->hardware_id != begin->hardware_id) {
         return false;
@@ -353,11 +370,16 @@ ota_reason_t ota_receiver_begin(ota_receiver_t *receiver,
         return OTA_REASON_BAD_SIZE;
     }
     if (begin->hardware_id != receiver->hardware_id) {
-        report(receiver, OTA_STATE_ERROR, OTA_REASON_BAD_VERSION);
-        return OTA_REASON_BAD_VERSION;
+        report(receiver, OTA_STATE_ERROR, OTA_REASON_BAD_HARDWARE);
+        return OTA_REASON_BAD_HARDWARE;
     }
     if (receiver->previous_version != 0u &&
         begin->version < receiver->previous_version) {
+        report(receiver, OTA_STATE_ERROR, OTA_REASON_BAD_VERSION);
+        return OTA_REASON_BAD_VERSION;
+    }
+    /* Anti-rollback: the signed security counter may only increase. */
+    if (begin->security_version < receiver->previous_security_version) {
         report(receiver, OTA_STATE_ERROR, OTA_REASON_BAD_VERSION);
         return OTA_REASON_BAD_VERSION;
     }
@@ -374,6 +396,7 @@ ota_reason_t ota_receiver_begin(ota_receiver_t *receiver,
     receiver->image_crc32 = begin->image_crc32;
 
     receiver->image_version = begin->version;
+    receiver->image_security_version = begin->security_version;
     receiver->build_id = begin->build_id;
     receiver->hardware_id = begin->hardware_id;
     memcpy(receiver->image_sha256, begin->image_sha256,
@@ -601,6 +624,9 @@ void ota_receiver_abort(ota_receiver_t *receiver, ota_reason_t reason,
     if (receiver == NULL) {
         return;
     }
+    bool had_session = receiver->state == OTA_STATE_RECEIVING ||
+                       receiver->state == OTA_STATE_VERIFYING ||
+                       receiver->partial_active != 0u;
     receiver->last_activity_ms = now_ms;
     receiver->stage_len = 0u;
     receiver->partial_active = 0u;
@@ -610,8 +636,10 @@ void ota_receiver_abort(ota_receiver_t *receiver, ota_reason_t reason,
     receiver->received = 0u;
     receiver->written = 0u;
     receiver->running_crc = 0xFFFFFFFFu;
-    if (receiver->state == OTA_STATE_RECEIVING ||
-        receiver->state == OTA_STATE_VERIFYING) {
+    if (had_session) {
+        /* Clearing the partial fields above makes this record a clean ERROR
+         * state: a later boot or BEGIN starts from zero instead of resuming a
+         * stale half-transfer. */
         (void)save_meta(receiver, OTA_STATE_ERROR, false);
         report(receiver, OTA_STATE_ERROR, reason);
     }
@@ -649,9 +677,19 @@ void ota_receiver_tick(ota_receiver_t *receiver, uint32_t now_ms)
     if (receiver == NULL) {
         return;
     }
+    uint32_t idle_ms = now_ms - receiver->last_activity_ms;
+
     if (receiver->state == OTA_STATE_RECEIVING &&
-        (uint32_t)(now_ms - receiver->last_activity_ms) > OTA_RECEIVE_TIMEOUT_MS) {
+        idle_ms > OTA_RECEIVE_TIMEOUT_MS) {
         ota_receiver_suspend(receiver, OTA_REASON_TIMEOUT, now_ms);
+        return;
+    }
+    /* A suspended session keeps its verified prefix for resume. If the host
+     * never comes back with a matching BEGIN, drop that prefix after 60 s so
+     * the device is not left half-upgraded. */
+    if (receiver->resumable && receiver->partial_active != 0u &&
+        idle_ms > OTA_SESSION_TIMEOUT_MS) {
+        ota_receiver_abort(receiver, OTA_REASON_TIMEOUT, now_ms);
     }
 }
 

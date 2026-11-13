@@ -40,7 +40,8 @@ static bool validate_slot(const boot_install_io_t *io, uint32_t base,
                           uint32_t crc, const uint8_t *sha256,
                           const uint8_t *signature,
                           uint32_t version, uint32_t build_id,
-                          uint16_t hardware_id, ota_reason_t *fail_reason)
+                          uint16_t hardware_id, uint16_t security_version,
+                          ota_reason_t *fail_reason)
 {
     image_flash_if_t image_if = make_image_if(io);
 
@@ -58,7 +59,7 @@ static bool validate_slot(const boot_install_io_t *io, uint32_t base,
     if (signature != NULL && !all_zero(signature, 64u) &&
         expect.sha256 != NULL) {
         ota_signature_blob_build(&blob, sha256, image_size, version,
-                                 build_id, hardware_id);
+                                 build_id, hardware_id, security_version);
         expect.signed_blob = &blob;
         expect.signature = signature;
     } else {
@@ -93,7 +94,7 @@ static bool slot_a_valid_with_running(const boot_install_io_t *io,
     return validate_slot(io, FLASH_SLOT_A_START, FLASH_SLOT_A_SIZE,
                          meta->running_size, meta->running_crc32,
                          meta->running_sha256, NULL,
-                         meta->running_version, 0u, 0u, fail_reason);
+                         meta->running_version, 0u, 0u, 0u, fail_reason);
 }
 
 static bool slot_a_valid_with_image(const boot_install_io_t *io,
@@ -104,7 +105,8 @@ static bool slot_a_valid_with_image(const boot_install_io_t *io,
                          meta->image_size, meta->image_crc32,
                          meta->image_sha256, meta->image_signature,
                          meta->image_version, meta->build_id,
-                         (uint16_t)meta->hardware_id, fail_reason);
+                         (uint16_t)meta->hardware_id,
+                         (uint16_t)meta->image_security_version, fail_reason);
 }
 
 static bool slot_b_valid(const boot_install_io_t *io, const ota_metadata_t *meta,
@@ -114,7 +116,8 @@ static bool slot_b_valid(const boot_install_io_t *io, const ota_metadata_t *meta
                          meta->image_size, meta->image_crc32,
                          meta->image_sha256, meta->image_signature,
                          meta->image_version, meta->build_id,
-                         (uint16_t)meta->hardware_id, fail_reason);
+                         (uint16_t)meta->hardware_id,
+                         (uint16_t)meta->image_security_version, fail_reason);
 }
 
 static bool slot_a_probe_ok(const boot_install_io_t *io)
@@ -216,6 +219,7 @@ static int snapshot_backup(const boot_install_io_t *io, ota_metadata_t *meta)
     meta->backup_size = size;
     meta->backup_crc32 = crc;
     meta->backup_version = meta->running_version;
+    meta->backup_security_version = meta->running_security_version;
     memcpy(meta->backup_sha256, sha, sizeof(meta->backup_sha256));
     if (meta->running_size != 0u) {
         memcpy(meta->backup_signature, meta->running_signature,
@@ -240,7 +244,7 @@ static int restore_backup(const boot_install_io_t *io, ota_metadata_t *meta)
     if (!validate_slot(io, FLASH_SLOT_A_START, FLASH_SLOT_A_SIZE,
                        meta->backup_size, meta->backup_crc32,
                        meta->backup_sha256, NULL,
-                       meta->backup_version, 0u, 0u, &fr)) {
+                       meta->backup_version, 0u, 0u, 0u, &fr)) {
         return -1;
     }
 
@@ -248,6 +252,7 @@ static int restore_backup(const boot_install_io_t *io, ota_metadata_t *meta)
     meta->image_size = meta->backup_size;
     meta->image_crc32 = meta->backup_crc32;
     meta->image_version = meta->backup_version;
+    meta->image_security_version = meta->backup_security_version;
     memcpy(meta->image_sha256, meta->backup_sha256,
            sizeof(meta->image_sha256));
     memcpy(meta->image_signature, meta->backup_signature,
@@ -358,6 +363,40 @@ int boot_install_run(const boot_install_io_t *io, const record_store_t *meta_sto
             return 0;
         }
 
+        /* Hardware compatibility: never install an image built for a
+         * different board profile, even if it is correctly signed. */
+        if (io->hardware_id != 0u &&
+            (uint16_t)meta.hardware_id != io->hardware_id) {
+            meta.state = OTA_STATE_ERROR;
+            (void)save_state(io, &meta);
+            result->reason = OTA_REASON_BAD_HARDWARE;
+            result->decision = (has_running_descriptor(&meta) &&
+                                slot_a_valid_with_running(io, &meta, NULL))
+                                   ? BOOT_DECISION_BOOT_A
+                                   : (slot_a_probe_ok(io) ? BOOT_DECISION_BOOT_A
+                                                          : BOOT_DECISION_STAY);
+            return 0;
+        }
+
+        /* Anti-rollback, bootloader side: the security version may only
+         * increase. BOOT_SECURITY_VERSION is the compiled floor, so wiping the
+         * metadata does not reopen older releases. */
+        uint32_t current_security = meta.running_security_version;
+        if (current_security < BOOT_SECURITY_VERSION) {
+            current_security = BOOT_SECURITY_VERSION;
+        }
+        if (meta.image_security_version < current_security) {
+            meta.state = OTA_STATE_ERROR;
+            (void)save_state(io, &meta);
+            result->reason = OTA_REASON_BAD_VERSION;
+            result->decision = (has_running_descriptor(&meta) &&
+                                slot_a_valid_with_running(io, &meta, NULL))
+                                   ? BOOT_DECISION_BOOT_A
+                                   : (slot_a_probe_ok(io) ? BOOT_DECISION_BOOT_A
+                                                          : BOOT_DECISION_STAY);
+            return 0;
+        }
+
         ota_reason_t fail = OTA_REASON_NONE;
         if (!slot_b_valid(io, &meta, &fail)) {
             meta.state = OTA_STATE_ERROR;
@@ -378,6 +417,7 @@ int boot_install_run(const boot_install_io_t *io, const record_store_t *meta_sto
          * to slot A. backup_valid is only set after the copy is verified. */
         if ((ota_state_t)meta.state == OTA_STATE_READY_TO_BOOT) {
             meta.previous_version = meta.running_version;
+            meta.previous_security_version = meta.running_security_version;
             if (has_running_descriptor(&meta) || slot_a_probe_ok(io)) {
                 if (snapshot_backup(io, &meta) != 0) {
                     result->reason = OTA_REASON_FLASH_ERROR;

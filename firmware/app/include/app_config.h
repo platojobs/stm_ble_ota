@@ -38,6 +38,11 @@
 #endif
 #define APP_HARDWARE_ID         0x0050u      /* NUCLEO-C562RE profile */
 
+/* Monotonic anti-rollback counter for this firmware. Increment it whenever a
+ * release must not be downgraded to an older security level; the bootloader
+ * compares the signed value against the highest one it has ever installed. */
+#define APP_SECURITY_VERSION    1u
+
 #define APP_NAME                "stm-ble-ota"
 #define BLE_DEVICE_NAME         "STM-BLE-OTA"
 

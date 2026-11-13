@@ -167,17 +167,24 @@ AT+BLEADVSTART
 ```
 
 BEGIN 载荷（116 字节）：`image_size`、`image_crc32`、`version`
-（`0x00MMmmpp`）、`build_id`、`hardware_id`（必须等于 `0x0050`）、保留字段、
-`image_sha256[32]`、`signature[64]`。Ed25519 签名覆盖摘要以及
-大小/版本/build/硬件 ID；全零签名会被拒绝。
+（`0x00MMmmpp`）、`build_id`、`hardware_id`（必须等于 `0x0050`）、
+`security_version`、`image_sha256[32]`、`signature[64]`。Ed25519 签名覆盖
+摘要以及大小/版本/build/硬件 ID/安全版本号；全零签名会被拒绝。
 
 状态：`IDLE → RECEIVING → VERIFYING → READY_TO_BOOT`；大小/CRC/顺序/超时/
-中止/签名错误会进入 `ERROR`。设备会校验每一帧 CRC、整包 CRC、从 Flash
-回读数据的 SHA-256，bootloader 在写 slot A 前再验一次 Ed25519 签名。
+中止/签名/硬件不匹配会进入 `ERROR`。设备会校验每一帧 CRC、整包 CRC、从
+Flash 回读数据的 SHA-256，bootloader 在写 slot A 前再验一次 Ed25519 签名。
+
+防回退：`security_version` 只增不减。APP 用运行版本（`APP_SECURITY_VERSION`
+下限）比较，bootloader 再用 `BOOT_SECURITY_VERSION` 与已安装的最高值复核，
+因此带有效签名的旧版本也会被拒绝。镜像硬件 ID 与主板 profile 不一致时，
+两侧都以 `bad_hardware`（10）拒绝。
 
 断点续传：每完成 8 KB 分块以及超时/中止时持久化进度与分块 CRC；复位后
 `OTA_QUERY` 返回按分块对齐的偏移，主机从设备已复核的前缀继续；清单
-（大小/CRC/版本/build/硬件/SHA/签名）变化时丢弃旧进度并从头开始。
+（大小/CRC/版本/安全版本/build/硬件/SHA/签名）变化时丢弃旧进度并从头开始。
+静默 10 s 会挂起会话；再持续 60 s 没有匹配的 BEGIN 则中止会话并清空分块
+进度，避免设备停在半升级状态。
 
 失败处理：
 
@@ -343,7 +350,7 @@ python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
 
 # 打包并签名
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.2.0 --hw 0x0050 --build-id 200 \
+    --version 0.2.0 --hw 0x0050 --build-id 200 --security-version 1 \
     --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
@@ -415,7 +422,8 @@ BSP、Flash 驱动、链接脚本、启动文件和 `flash_layout.h`；
 profile、看门狗复位、回滚，以及两种传输方式下的 OTA。时钟仅支持 48 MHz；
 I2C 时序、ADC 精度和 Flash 时序均为理论推导，未实测。ESP-AT 需要重新构建
 自定义服务表，官方固件不包含 `0xFF00`。OTA 完整性使用 CRC-32 + SHA-256，
-真实性使用 Ed25519；没有加密，也没有防回滚熔丝。WiFi 凭据不以明文保存：
+真实性使用 Ed25519；没有加密，也没有硬件防回滚熔丝（签名中的
+`security_version` 只能阻止 OTA 降级，无法阻止物理重刷）。WiFi 凭据不以明文保存：
 配置记录用由 MCU UID 派生的 SHA-256 密钥流做字节混淆，这属于混淆而非加密
 （强度边界见 [docs/security.md](docs/security.md) 与 KNOWN_ISSUES）。
 bootloader 仅在元数据完全没有签名时接受未签名镜像（产线烧录路径）；

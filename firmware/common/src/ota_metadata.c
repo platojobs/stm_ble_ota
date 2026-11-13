@@ -104,6 +104,7 @@ void ota_metadata_apply_backup(ota_metadata_t *meta)
     meta->image_size = meta->backup_size;
     meta->image_crc32 = meta->backup_crc32;
     meta->image_version = meta->backup_version;
+    meta->image_security_version = meta->backup_security_version;
     memcpy(meta->image_sha256, meta->backup_sha256, sizeof(meta->image_sha256));
     memcpy(meta->image_signature, meta->backup_signature,
            sizeof(meta->image_signature));
@@ -111,6 +112,7 @@ void ota_metadata_apply_backup(ota_metadata_t *meta)
     meta->running_size = meta->backup_size;
     meta->running_crc32 = meta->backup_crc32;
     meta->running_version = meta->backup_version;
+    meta->running_security_version = meta->backup_security_version;
     memcpy(meta->running_sha256, meta->backup_sha256,
            sizeof(meta->running_sha256));
     memcpy(meta->running_signature, meta->backup_signature,
@@ -127,6 +129,7 @@ void ota_metadata_promote_running(ota_metadata_t *meta)
     meta->running_size = meta->image_size;
     meta->running_crc32 = meta->image_crc32;
     meta->running_version = meta->image_version;
+    meta->running_security_version = meta->image_security_version;
     memcpy(meta->running_sha256, meta->image_sha256,
            sizeof(meta->running_sha256));
     memcpy(meta->running_signature, meta->image_signature,

@@ -78,6 +78,7 @@ typedef enum {
     OTA_REASON_ABORTED       = 7,
     OTA_REASON_BAD_VERSION   = 8,
     OTA_REASON_BAD_SIGNATURE = 9,
+    OTA_REASON_BAD_HARDWARE  = 10,
 } ota_reason_t;
 
 typedef struct __attribute__((packed)) {
@@ -96,6 +97,10 @@ typedef struct __attribute__((packed)) {
  * packer and the bootloader build it with the same little-endian field order,
  * so the signature authenticates the image digest together with every field
  * the bootloader acts on.
+ *
+ * security_version is a monotonic anti-rollback counter: it may only increase.
+ * It was the reserved field in v0.3.0, so older packages (value 0) still build
+ * the same blob; devices with a higher baseline reject them.
  */
 typedef struct __attribute__((packed)) {
     uint8_t  image_sha256[32];
@@ -103,7 +108,7 @@ typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t build_id;
     uint16_t hardware_id;
-    uint16_t reserved;
+    uint16_t security_version;
 } ota_signature_blob_t;
 
 typedef struct __attribute__((packed)) {
@@ -112,7 +117,7 @@ typedef struct __attribute__((packed)) {
     uint32_t version;       /* 0x00MMmmpp: major, minor, patch                 */
     uint32_t build_id;
     uint16_t hardware_id;
-    uint16_t reserved;
+    uint16_t security_version; /* monotonic anti-rollback counter, signed      */
     uint8_t  image_sha256[32]; /* SHA-256 of the image bytes                    */
     uint8_t  signature[64];    /* Ed25519 over ota_signature_blob_t             */
 } ota_begin_payload_t;
@@ -210,6 +215,7 @@ uint32_t ota_version_pack(uint8_t major, uint8_t minor, uint8_t patch);
 /** Fill the canonical signed blob from the descriptor fields. */
 void ota_signature_blob_build(ota_signature_blob_t *blob, const uint8_t *sha256,
                               uint32_t image_size, uint32_t version,
-                              uint32_t build_id, uint16_t hardware_id);
+                              uint32_t build_id, uint16_t hardware_id,
+                              uint16_t security_version);
 
 #endif /* OTA_PROTOCOL_H */

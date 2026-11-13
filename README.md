@@ -176,19 +176,30 @@ Transport-independent, 16-byte header + payload (≤ 512 bytes):
 ```
 
 BEGIN payload (116 bytes): `image_size`, `image_crc32`, `version`
-(`0x00MMmmpp`), `build_id`, `hardware_id` (must equal `0x0050`), reserved,
-`image_sha256[32]`, `signature[64]`. The Ed25519 signature covers the digest
-plus size/version/build/hardware, and an all-zero signature is rejected.
+(`0x00MMmmpp`), `build_id`, `hardware_id` (must equal `0x0050`),
+`security_version`, `image_sha256[32]`, `signature[64]`. The Ed25519 signature
+covers the digest plus size/version/build/hardware/security version, and an
+all-zero signature is rejected.
 
 States: `IDLE → RECEIVING → VERIFYING → READY_TO_BOOT`, with `ERROR` on bad
-size/CRC/order/timeout/abort/signature. The device verifies every frame CRC,
-the final stream CRC, the SHA-256 of the bytes read back from flash, and the
-bootloader re-verifies the Ed25519 signature before touching slot A.
+size/CRC/order/timeout/abort/signature/hardware. The device verifies every
+frame CRC, the final stream CRC, the SHA-256 of the bytes read back from flash,
+and the bootloader re-verifies the Ed25519 signature before touching slot A.
+
+Anti-rollback: `security_version` may only increase. The application compares
+it with the running value (`APP_SECURITY_VERSION` floor) and the bootloader
+repeats the check against `BOOT_SECURITY_VERSION` plus the highest installed
+value, so a signed older release is refused even with a valid signature.
+Images whose hardware id differs from the board profile are refused on both
+sides with reason `bad_hardware` (10).
 
 Resume: progress is persisted at every 8 KB chunk boundary (with per-chunk
 CRC records) and on timeout/abort. `OTA_QUERY` returns the chunk-aligned
 offset, so after a reset the host resumes from a prefix the device has
-re-verified; a changed manifest discards the partial transfer.
+re-verified; a changed manifest discards the partial transfer. 10 s of silence
+suspends the session; after 60 s without a matching BEGIN the session is
+aborted and the partial metadata is cleared, so the device cannot stay
+half-upgraded.
 
 Failure handling:
 
@@ -393,7 +404,7 @@ python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
 
 # package and sign an image
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.2.0 --hw 0x0050 --build-id 200 \
+    --version 0.2.0 --hw 0x0050 --build-id 200 --security-version 1 \
     --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py inspect build/app-0.2.0.ota
@@ -473,7 +484,9 @@ BLE profile, watchdog reset, rollback and OTA over both transports. Clock is
 48 MHz only; I2C timing, ADC accuracy and flash timing are analytic, not
 measured. ESP-AT needs a custom service table rebuild; stock firmware does not
 expose `0xFF00`. OTA integrity uses CRC-32 + SHA-256 and authenticity uses
-Ed25519; there is no encryption and no anti-rollback fuse. WiFi credentials are
+Ed25519; there is no encryption and no hardware anti-rollback fuse (the signed
+`security_version` blocks OTA downgrades, not physical reflashing). WiFi
+credentials are
 not stored in plaintext: the config record keeps them as SHA-256-keystream
 ciphertext keyed from the MCU UID, which is obfuscation rather than encryption
 (see [docs/security.md](docs/security.md) and KNOWN_ISSUES for the boundary).

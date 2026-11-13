@@ -55,8 +55,10 @@ therefore a bootloader update:
 
 If a private key is leaked, treat every image signed with it as untrusted,
 rotate the bootloader key on all devices, and re-sign the application. There
-is no anti-rollback fuse, so physical flash access can still restore an old
-bootloader (see `KNOWN_ISSUES.md`).
+is no hardware anti-rollback fuse. The signed `security_version` plus the
+compiled `APP_SECURITY_VERSION`/`BOOT_SECURITY_VERSION` floors stop a signed
+downgrade through OTA, but physical flash access can still restore an old
+bootloader or wipe the metadata (see `KNOWN_ISSUES.md`).
 
 ## WiFi credentials at rest
 
@@ -80,8 +82,10 @@ credentials that protect other systems.
 
 ## Other boundaries
 
-- OTA authenticity is Ed25519 over SHA-256, size, version, build id and
-  hardware id. Images are not encrypted.
+- OTA authenticity is Ed25519 over SHA-256, size, version, build id, hardware
+  id and the anti-rollback security version. Images are not encrypted.
+- Both sides reject an image whose `hardware_id` does not match the board
+  profile, so a signed image for another variant is not installed.
 - The bootloader accepts an unsigned image only when the metadata carries no
   signature at all (factory provisioning path); OTA downloads always require
   a valid signature.

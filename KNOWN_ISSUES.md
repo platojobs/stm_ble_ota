@@ -21,6 +21,9 @@ no board available while it was written.
 | OTA over USART2 | protocol path covered by host tests; **not verified on hardware** |
 | Resumed transfer after a real power loss mid-chunk | state machine tested on host; **not verified on hardware** |
 | Ed25519 verification on target (TweetNaCl) | vectors pass on host with SHA/Ed25519 tests; **not verified on hardware** |
+| Anti-rollback `security_version` rejection (APP and bootloader) | logic tested on host; **counter persistence across real OTA/rollback not verified on hardware** |
+| Hardware-id mismatch rejection | logic tested on host; **not verified on hardware** |
+| 60 s OTA session timeout clearing partial metadata | state machine tested on host; **not verified on hardware** |
 | IWDG timeout, window and reset source handling | register sequence derived from RM0522; **not verified** |
 | Boot confirmation, three-failure rollback and backup restore | logic tested on host; **not verified on hardware** |
 | Device serial derived from the MCU UID and persisted | formatting/round-trip tested on host; UID register read **not verified on hardware** |
@@ -28,10 +31,11 @@ no board available while it was written.
 | Crash capture (HardFault/MemManage/BusFault/UsageFault) and `.noinit` hand-off | decoder and flash ring tested on host; **exception entry and persistence across reset not executed on hardware** |
 | Stack paint/high-water, canary and bounded heap accounting | painting and canary tested on host; **MSP stack limit, actual stack depth and heap use not measured on silicon** |
 
-Host-side logic tests (1,812 assertions) cover CRC, frame parsing/resync,
+Host-side logic tests (1,900 assertions) cover CRC, frame parsing/resync,
 record store torn-write recovery, image validation (size, vectors, CRC,
 SHA-256, Ed25519), OTA state machine and resume/truncation, install/copy
-decisions, signature failure, downgrade rejection, CLI parsing, rollback
+decisions, signature failure, downgrade and security-version rejection,
+hardware mismatch, session-timeout cleanup, CLI parsing, rollback
 policy, error codes/fault log, credential bounds, device identity, crash
 record decoding/ring overwrite/corruption tolerance, stack paint high-water and
 power-loss fallbacks. They use an in-memory fake flash and do not model real
@@ -129,9 +133,9 @@ flash timing.
   **not verified**; check the board user manual before wiring.
 - `tools/ota_host.py` BLE mode requires `bleak` and a working custom ESP-AT
   build. The serial mode has no such dependency beyond `pyserial`.
-- The `.ota` package format (format 2, SHA-256 + signature in the header) is a
-  host-side container; the bootloader does not read it. Only the raw image
-  bytes and the manifest are transferred.
+- The `.ota` package format (format 3, SHA-256 + signature + security version
+  in the header) is a host-side container; the bootloader does not read it.
+  Only the raw image bytes and the manifest are transferred.
 - The host tool's `--verify` step reconnects and reads `info`; if the device
   fails to boot after an OTA, this reports a timeout rather than a diagnosis.
 - Application image must fit in 96 KB (slot A and slot B). There is no

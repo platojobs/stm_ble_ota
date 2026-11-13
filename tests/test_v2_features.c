@@ -137,7 +137,7 @@ TEST_CASE(image_validate_accepts_valid_signature)
 
     ota_signature_blob_t blob;
     ota_signature_blob_build(&blob, k_test_sha256, sizeof(image),
-                             0x00020000u, 7u, 0x0050u);
+                             0x00020000u, 7u, 0x0050u, 0u);
     image_expectation_t expect = {
         .image_size = sizeof(image),
         .expected_crc = 0x21A57323u,
@@ -161,7 +161,7 @@ TEST_CASE(image_validate_rejects_bad_signature)
 
     ota_signature_blob_t blob;
     ota_signature_blob_build(&blob, k_test_sha256, sizeof(image),
-                             0x00020000u, 7u, 0x0050u);
+                             0x00020000u, 7u, 0x0050u, 0u);
     uint8_t bad_sig[64];
     memcpy(bad_sig, k_test_signature, sizeof(bad_sig));
     bad_sig[0] ^= 0x01u;
@@ -411,6 +411,7 @@ TEST_CASE(boot_install_rejects_bad_signature_and_keeps_old_firmware)
     io.flash_erase_page = ctx_erase;
     io.flash_program = ctx_program;
     io.metadata_save = ctx_save;
+    io.hardware_id = 0x0050u;
 
     ota_metadata_t meta;
     ota_metadata_default(&meta);
@@ -418,6 +419,7 @@ TEST_CASE(boot_install_rejects_bad_signature_and_keeps_old_firmware)
     meta.image_size = 256u;
     meta.image_crc32 = 0x21A57323u;
     meta.image_version = 0x00020000u;
+    meta.image_security_version = 1u;
     meta.build_id = 7u;
     meta.hardware_id = 0x0050u;
     memcpy(meta.image_sha256, k_test_sha256, sizeof(meta.image_sha256));

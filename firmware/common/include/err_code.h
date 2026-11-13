@@ -63,6 +63,7 @@ typedef enum {
     ERR_CODE_OTA_TIMEOUT       = 0x0305,
     ERR_CODE_OTA_ABORTED       = 0x0306,
     ERR_CODE_OTA_BAD_VERSION   = 0x0307,
+    ERR_CODE_OTA_BAD_HARDWARE  = 0x0308,
 
     /* 0x04xx: image validation. */
     ERR_CODE_IMAGE_SIZE        = 0x0401,

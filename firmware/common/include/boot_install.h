@@ -25,6 +25,10 @@
 
 #define BOOT_MAX_INSTALL_ATTEMPTS 3u
 
+/* Lowest security version this bootloader accepts. Raise it when an older
+ * release must never be installed again, even if the metadata was wiped. */
+#define BOOT_SECURITY_VERSION     1u
+
 typedef struct {
     void *context;
     int (*flash_erase_page)(void *context, uint32_t page_address);
@@ -32,6 +36,7 @@ typedef struct {
                          uint32_t length);
     int (*flash_read)(void *context, uint32_t address, void *out, uint32_t length);
     int (*metadata_save)(void *context, const ota_metadata_t *metadata);
+    uint16_t hardware_id; /* 0 disables the check (host tests without a board) */
 } boot_install_io_t;
 
 typedef enum {

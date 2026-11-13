@@ -217,7 +217,7 @@ CRC-32 is `zlib.crc32` in Python and `crc32_ieee_buf()` in C.
 8   u32 version        0x00MMmmpp (major, minor, patch)
 12  u32 build_id       free-form
 16  u16 hardware_id    must equal APP_HARDWARE_ID (0x0050)
-18  u16 reserved       zero
+18  u16 security_version  monotonic anti-rollback counter (signed)
 20  32  image_sha256   SHA-256 of the image bytes
 52  64  signature      Ed25519 over ota_signature_blob_t (see below)
 ```
@@ -232,8 +232,15 @@ bootloader acts on:
 36  u32 version
 40  u32 build_id
 44  u16 hardware_id
-46  u16 reserved = 0
+46  u16 security_version
 ```
+
+`security_version` was the reserved field in v0.3.0, so the blob stays 48 bytes
+and old packages (value 0) still verify. It is a monotonic counter: both the
+application and the bootloader reject an image whose value is lower than the
+running firmware's, so a signed older release cannot be installed again.
+`APP_SECURITY_VERSION` (app) and `BOOT_SECURITY_VERSION` (bootloader) are the
+compiled floors used when no installed metadata exists.
 
 `ota_info_payload_t` (answer to `OTA_QUERY`, sent after a reset or reconnect):
 
@@ -285,19 +292,24 @@ END (image_size, crc)                  ->
                                         resets after 500 ms
 ```
 
-The device verifies, in this order: size range and hardware id, monotonic
-version, signature presence, per-frame CRC, contiguous offsets, final stream
-CRC, SHA-256 of the flash content, and finally the bootloader verifies the
-Ed25519 signature before slot A is touched. Any failure produces an
-`OTA_PROGRESS` with `state=ERROR` and the reason code.
+The device verifies, in this order: size range, hardware id, monotonic version,
+monotonic security version, signature presence, per-frame CRC, contiguous
+offsets, final stream CRC, SHA-256 of the flash content. The bootloader repeats
+the hardware, version and security checks and verifies the Ed25519 signature
+before slot A is touched. Any failure produces an `OTA_PROGRESS` with
+`state=ERROR` and the reason code.
 
 Resume rules:
 
 - metadata is persisted at every 8 KB chunk boundary and on timeout/abort;
 - each chunk CRC is stored, so a reset keeps only the longest prefix whose
   chunk records still match slot B;
-- a manifest change (size/CRC/version/build/hardware/SHA/signature) discards
-  the partial transfer and restarts at offset 0;
+- a manifest change (size/CRC/version/security version/build/hardware/SHA/
+  signature) discards the partial transfer and restarts at offset 0;
+- 10 s of silence suspends the transfer and keeps the verified prefix; after
+  60 s without a matching BEGIN the session is aborted, the partial metadata is
+  cleared (`received_bytes=0`, `chunk_count=0`) and the device reports
+  `timeout`, so it cannot stay half-upgraded;
 - `OTA_QUERY` reports the chunk-aligned offset, never a partially written
   chunk, so the host always resumes at an offset the device accepts.
 
@@ -337,7 +349,8 @@ copied back into slot A and the attempt counter is cleared. `boot_attempts` is
 persisted, so a reset loop cannot hide a broken image.
 
 Reason codes: 0 none, 1 bad_state, 2 bad_size, 3 bad_crc, 4 out_of_order,
-5 flash_error, 6 timeout, 7 aborted, 8 bad_version, 9 bad_signature.
+5 flash_error, 6 timeout, 7 aborted, 8 bad_version, 9 bad_signature,
+10 bad_hardware.
 
 Rules that keep the old image bootable:
 
@@ -349,6 +362,10 @@ Rules that keep the old image bootable:
   bootloader then boots slot A if it still validates,
 - a version lower than the running version is rejected both in the
   application (`ota_receiver_begin`) and in the bootloader,
+- a security version lower than the running one (or the compiled floor) is
+  rejected on both sides, so a signed old release cannot be reinstalled,
+- an image whose `hardware_id` differs from `BOOT_HARDWARE_ID`/`APP_HARDWARE_ID`
+  is rejected on both sides before any flash write,
 - a signed image whose Ed25519 check fails is never copied into slot A.
 
 ### 5.4 Persisted records
@@ -374,12 +391,12 @@ for the bootloader/OTA state and an unprovisioned (empty) WiFi config. The
 host tests cover torn writes, erase faults, corrupting the newest record and
 the both-pages-invalid fallback.
 
-OTA metadata payload (`ota_metadata_t`, 528 bytes, fields `u32` unless noted):
+OTA metadata payload (`ota_metadata_t`, 452 bytes, fields `u32` unless noted):
 
 | Field | Meaning |
 | --- | --- |
 | magic | `0x4F4D4554` ("OMET") |
-| layout_version | 2 |
+| layout_version | 3 |
 | state | `ota_state_t` |
 | image_size | bytes in slot B |
 | image_crc32 | CRC of the staged image |
@@ -388,6 +405,10 @@ OTA metadata payload (`ota_metadata_t`, 528 bytes, fields `u32` unless noted):
 | boot_attempts | consecutive boots without app confirmation |
 | boot_slot | `FLASH_SLOT_A_START` |
 | previous_version | version running when the download started |
+| image_security_version | signed security counter of the staged image |
+| previous_security_version | counter of the image running before the upgrade |
+| running_security_version | highest security counter accepted in slot A |
+| backup_security_version | counter of the BACKUP snapshot |
 | received_bytes | contiguous prefix written to slot B |
 | partial_crc32 | raw CRC accumulator for that prefix |
 | build_id | free-form build identifier |
@@ -423,6 +444,7 @@ device, and a record written with a different key is rejected at load. See
 | AT command timeout | 2000 ms | `ESP_COMMAND_TIMEOUT_MS` |
 | WiFi reconnect interval | 30000 ms | `wifi_service.c` |
 | OTA idle timeout | 10000 ms | `ota_receiver.c` |
+| OTA session timeout (clears partial state) | 60000 ms | `ota_receiver.c` |
 | OTA reset delay | 500 ms | `OTA_RESET_DELAY_MS` |
 | Boot install attempts | 3 | `BOOT_MAX_INSTALL_ATTEMPTS` |
 | Boot confirmation grace | 3000 ms | `ota_service` |

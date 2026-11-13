@@ -214,7 +214,8 @@ uint32_t ota_version_pack(uint8_t major, uint8_t minor, uint8_t patch)
 
 void ota_signature_blob_build(ota_signature_blob_t *blob, const uint8_t *sha256,
                               uint32_t image_size, uint32_t version,
-                              uint32_t build_id, uint16_t hardware_id)
+                              uint32_t build_id, uint16_t hardware_id,
+                              uint16_t security_version)
 {
     memset(blob, 0, sizeof(*blob));
     memcpy(blob->image_sha256, sha256, sizeof(blob->image_sha256));
@@ -222,4 +223,5 @@ void ota_signature_blob_build(ota_signature_blob_t *blob, const uint8_t *sha256,
     blob->version = version;
     blob->build_id = build_id;
     blob->hardware_id = hardware_id;
+    blob->security_version = security_version;
 }

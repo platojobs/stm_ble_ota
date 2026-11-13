@@ -22,6 +22,15 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
   `STACK_OVERFLOW` 0x0707). CLI `resource` reports stack high-water, canary,
   heap and RAM margin. `tools/check_size.py` parses the map files and fails the
   build when Flash/RAM budgets are exceeded.
+- **OTA hardening**: the signed manifest now carries a monotonic
+  `security_version` (`APP_SECURITY_VERSION`/`BOOT_SECURITY_VERSION` floors);
+  both the application and the bootloader refuse a lower value, so a correctly
+  signed old release cannot be installed. Images whose `hardware_id` differs
+  from the board profile are rejected on both sides with `bad_hardware` (10,
+  `ERR_CODE_OTA_BAD_HARDWARE` 0x0308). After a 10 s idle suspend, a session
+  that sees no matching BEGIN for 60 s is aborted and its partial metadata is
+  cleared. Packages move to OTAP format 3 with `--security-version` (default 1);
+  format 1/2 packages still inspect/unpack. Metadata layout is v3 (452 bytes).
 
 ## [0.3.0] - 2026-11-07
 

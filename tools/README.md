@@ -38,7 +38,7 @@ python3 tools/firmware_tool.py keygen -o tools/keys/ed25519_private.pem \
 python3 tools/firmware_tool.py inspect build/arm/stm_ble_ota_app.bin
 
 python3 tools/firmware_tool.py pack build/arm/stm_ble_ota_app.bin \
-    --version 0.2.0 --hw 0x0050 --build-id 2 \
+    --version 0.2.0 --hw 0x0050 --build-id 2 --security-version 1 \
     --key tools/keys/ed25519_private.pem -o build/app-0.2.0.ota
 
 python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
@@ -46,20 +46,22 @@ python3 tools/firmware_tool.py unpack build/app-0.2.0.ota -o build/app.bin
 
 `--key` can be omitted when `OTA_SIGNING_KEY` points to the private-key PEM.
 
-Package layout (120-byte header + image, format 2):
+Package layout (122-byte header + image, format 3; formats 1 and 2 are still
+readable by `inspect`/`unpack`):
 
 | Offset | Size | Field |
 | --- | --- | --- |
 | 0 | 4 | magic `OTAP` |
-| 4 | 2 | format version (2) |
+| 4 | 2 | format version (3) |
 | 6 | 2 | hardware id |
 | 8 | 4 | version `0x00MMmmpp` |
 | 12 | 4 | image size |
 | 16 | 4 | image CRC-32 |
 | 20 | 4 | build id |
-| 24 | 32 | SHA-256 of the image bytes |
-| 56 | 64 | Ed25519 signature of the signed blob |
-| 120 | N | image bytes |
+| 24 | 2 | security version (anti-rollback, signed) |
+| 26 | 32 | SHA-256 of the image bytes |
+| 58 | 64 | Ed25519 signature of the signed blob |
+| 122 | N | image bytes |
 
 ## Provisioning and OTA
 
