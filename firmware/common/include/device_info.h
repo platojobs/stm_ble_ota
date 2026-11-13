@@ -42,6 +42,14 @@ void device_info_defaults(device_info_t *info, uint32_t hardware_id);
 /** @return true when hardware_id is in range and the serial is well formed. */
 bool device_info_valid(const device_info_t *info);
 
+/**
+ * Normalise a unit serial for storage: 1..24 chars of [0-9A-Za-z_-], letters
+ * folded to uppercase. @return false when empty, too long or contains other
+ * characters. On success @p out is NUL-terminated.
+ */
+bool device_info_normalize_serial(const char *input,
+                                  char out[DEVICE_SERIAL_MAX + 1u]);
+
 /** Build "C562-XXXXXXXXXXXX" from the low 6 bytes of the MCU UID. */
 void device_info_build_serial(const uint8_t uid[6],
                               char out[DEVICE_SERIAL_MAX + 1u]);

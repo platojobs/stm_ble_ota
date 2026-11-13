@@ -28,15 +28,20 @@ no board available while it was written.
 | Boot confirmation, three-failure rollback and backup restore | logic tested on host; **not verified on hardware** |
 | Device serial derived from the MCU UID and persisted | formatting/round-trip tested on host; UID register read **not verified on hardware** |
 | Production self-test (`selftest`: flash/I2C/ADC/BLE) | decision logic implemented; **not executed on hardware** |
+| `serial set <sn>` programming and persistence across reset | normaliser and record round-trip tested on host; **not executed on hardware** |
+| One-shot `factory test` result (serial + crash-history bits) | JSON/bitmask implemented; **not executed on hardware** |
+| `tools/factory_test.py` against a real fixture | requires pyserial and a board; **not executed here** |
+| Release checklist and HIL plan cases | documents only; **no HIL-01…HIL-12 case has been run** |
 | Crash capture (HardFault/MemManage/BusFault/UsageFault) and `.noinit` hand-off | decoder and flash ring tested on host; **exception entry and persistence across reset not executed on hardware** |
 | Stack paint/high-water, canary and bounded heap accounting | painting and canary tested on host; **MSP stack limit, actual stack depth and heap use not measured on silicon** |
 
-Host-side logic tests (1,900 assertions) cover CRC, frame parsing/resync,
+Host-side logic tests (1,913 assertions) cover CRC, frame parsing/resync,
 record store torn-write recovery, image validation (size, vectors, CRC,
 SHA-256, Ed25519), OTA state machine and resume/truncation, install/copy
 decisions, signature failure, downgrade and security-version rejection,
 hardware mismatch, session-timeout cleanup, CLI parsing, rollback
-policy, error codes/fault log, credential bounds, device identity, crash
+policy, error codes/fault log, credential bounds, device identity and serial
+normalisation, factory CLI parsing, crash
 record decoding/ring overwrite/corruption tolerance, stack paint high-water and
 power-loss fallbacks. They use an in-memory fake flash and do not model real
 flash timing.

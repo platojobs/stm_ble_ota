@@ -45,6 +45,32 @@ bool device_info_valid(const device_info_t *info)
     return serial_chars_ok(info->serial, strlen(info->serial));
 }
 
+bool device_info_normalize_serial(const char *input,
+                                  char out[DEVICE_SERIAL_MAX + 1u])
+{
+    if (input == NULL || out == NULL) {
+        return false;
+    }
+    size_t length = strlen(input);
+    if (length == 0u || length > DEVICE_SERIAL_MAX) {
+        return false;
+    }
+    for (size_t i = 0; i < length; ++i) {
+        char c = input[i];
+        if (c >= 'a' && c <= 'z') {
+            c = (char)(c - 'a' + 'A');
+        }
+        bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                  c == '-' || c == '_';
+        if (!ok) {
+            return false;
+        }
+        out[i] = c;
+    }
+    out[length] = '\0';
+    return true;
+}
+
 void device_info_build_serial(const uint8_t uid[6],
                               char out[DEVICE_SERIAL_MAX + 1u])
 {

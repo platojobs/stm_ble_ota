@@ -27,6 +27,13 @@ const device_info_t *device_service_info(void);
 bool device_service_ready(void);
 
 /**
+ * Program a unit serial from the production fixture. The input is normalised
+ * (uppercase, 1..24 chars of [0-9A-Z_-]) and persisted immediately.
+ * @return 0 on success, -1 for an invalid serial, -2 when flash write fails.
+ */
+int device_service_set_serial(const char *serial);
+
+/**
  * Per-device storage key derived from the 96-bit MCU UID and a domain label.
  * Used to obfuscate WiFi credentials at rest. Available after
  * device_service_init(); never NULL.

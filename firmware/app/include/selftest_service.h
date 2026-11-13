@@ -20,6 +20,10 @@
 #define SELFTEST_ADC_BIT   0x04u
 #define SELFTEST_BLE_BIT   0x08u
 
+/* Extra checks run by the one-shot factory flow. */
+#define FACTORY_CHECK_SERIAL_BIT 0x10u
+#define FACTORY_CHECK_CRASH_BIT  0x20u
+
 typedef struct {
     bool flash_ok;
     bool i2c_ok;
@@ -30,5 +34,16 @@ typedef struct {
 } selftest_result_t;
 
 void selftest_service_run(selftest_result_t *out);
+
+/** One-shot production check: selftest plus identity and crash history. */
+typedef struct {
+    selftest_result_t selftest;
+    bool serial_ok;
+    bool crash_clean;
+    bool all_ok;
+    uint8_t failed_mask;
+} factory_result_t;
+
+void factory_service_run(factory_result_t *out);
 
 #endif /* SELFTEST_SERVICE_H */

@@ -319,7 +319,10 @@ ota status        状态、已接收字节、原因码与共享 err_code
 ota abort         中止当前会话
 log               最近故障环形缓冲（错误码、名称、detail）
 device            序列号、硬件 ID、固件版本、产线状态
+serial            读取已写入的序列号
+serial set <sn>   写入单机序列号（1-24 字符，[0-9A-Z_-]）
 selftest          Flash / I2C / ADC / BLE 产测自检
+factory test      一次性产测并输出 JSON 结果
 factory reset     擦除配置与元数据并复位（保留设备信息）
 ```
 
@@ -396,11 +399,21 @@ python3 tools/ota_host.py --ble --name STM-BLE-OTA ota build/app-0.2.0.ota --ver
    使用 `STM32CubeProgrammer` + SWD。不要预烧 Slot B，它只是下载目标；烧录
    后回读并比对校验和。
 3. **设备身份：** 首次启动从 MCU UID 派生序列号（`C562-XXXXXXXXXXXX`），
-   写入 bank 2 页 48/49。`factory reset` 会刻意保留它；用 CLI `device` 读取
-   并记录到产线台账。
-4. **产测自检：** 执行 `selftest` 并要求 `"ok":true`。`failed_mask` 为位掩码：
-   0x01 Flash、0x02 I2C/SHT30、0x04 ADC、0x08 BLE 就绪。失败同时会以
-   `SELFTEST_FAILED` 记入 `log`。
+   写入 bank 2 页 48/49。工装可用 `serial set C562-000123` 写入客户序列号
+   （1-24 字符，`[0-9A-Z_-]`，自动转大写并立即落盘），用 `serial` 回读。
+   `factory reset` 会刻意保留它。
+4. **产测：** 执行 `factory test` 并要求 `"ok":true`。`failed_mask` 位掩码：
+   0x01 Flash、0x02 I2C/SHT30、0x04 ADC、0x08 BLE 就绪、0x10 序列号、
+   0x20 崩溃历史。可脚本化运行并导出单机结果：
+
+   ```
+   python3 tools/factory_test.py --port /dev/tty.usbmodemXXXX \
+       --serial C562-000123 --out build/factory/C562-000123.json
+   ```
+
+   失败时脚本返回非零，并把主机时间、端口、写号应答与设备结果写入 JSON。
+   另见 [docs/release_checklist.md](docs/release_checklist.md) 与
+   [docs/hil_test_plan.md](docs/hil_test_plan.md)。
 5. **OTA 门禁：** 现场升级必须使用生产密钥签名的 `.ota` 包；bootloader 会
    拒绝无效签名并保留当前运行镜像。私钥保存在离线环境，或自有发布流水线的
    密钥库中，不得进入仓库或设备。

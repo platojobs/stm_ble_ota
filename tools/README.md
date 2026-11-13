@@ -1,10 +1,11 @@
 # Host tools
 
-Two small Python tools, no framework required.
+Small Python tools, no framework required.
 
 ```
 firmware_tool.py   inspect / pack / unpack images
 ota_host.py        provisioning and OTA over USART2 or BLE
+factory_test.py    program a serial and run the production test
 requirements.txt   pyserial (required), bleak (BLE mode only)
 ```
 
@@ -116,3 +117,19 @@ boot   -> bootloader validates slot B (CRC, SHA-256, Ed25519),
 
 Failure states are reported as `ota error reason=<name>`; reason codes are
 listed in `../docs/protocol.md`.
+
+## Production test
+
+`factory_test.py` talks to the USART2 test link, optionally programs the unit
+serial, runs `factory test` and writes one JSON record per unit. It exits 0 on
+pass, 1 on a failed check and 2 when pyserial or the link fails.
+
+```bash
+python3 tools/factory_test.py --port /dev/tty.usbmodemXXXX \
+    --serial C562-000123 --out build/factory/C562-000123.json
+```
+
+The record contains the host timestamp, port, serial-write response and the
+device JSON (`ok`, `failed_mask`, selftest bits, crash count). The procedure
+and the hardware cases that still require a real board are in
+`../docs/release_checklist.md` and `../docs/hil_test_plan.md`.

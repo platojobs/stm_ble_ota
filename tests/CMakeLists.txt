@@ -61,6 +61,7 @@ add_executable(unit_tests
     test_error_log.c
     test_crash.c
     test_stack_guard.c
+    test_factory.c
     test_main.c
 )
 

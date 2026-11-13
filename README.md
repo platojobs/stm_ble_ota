@@ -348,7 +348,10 @@ crash                 last 8 persistent crash records, one JSON line each
 crash clear           erase the persistent crash ring
 resource              stack high-water/canary, heap used/peak, RAM margin
 device                serial, hardware id, firmware version, factory state
+serial                read the stored unit serial
+serial set <sn>       program a unit serial (1-24 chars, [0-9A-Z_-])
 selftest              flash / I2C / ADC / BLE production self-test
+factory test          one-shot production check + JSON result
 factory reset         erase config+metadata and reset (keeps device info)
 ```
 
@@ -452,12 +455,24 @@ and the same binary OTA frames, with no dependence on the co-processor.
    `0x0800_8000` (`STM32CubeProgrammer`, SWD). Do not pre-fill slot B; it is a
    download target only. Read the images back and compare checksums.
 3. **Identity:** the first boot derives the serial from the MCU UID
-   (`C562-XXXXXXXXXXXX`) and stores it in bank 2 pages 48/49. `factory reset`
-   deliberately keeps it; read it with the CLI `device` command and record it
-   in the production log.
-4. **Self-test:** run `selftest` and require `"ok":true`. `failed_mask` is a
-   bitmask: 0x01 flash, 0x02 I2C/SHT30, 0x04 ADC, 0x08 BLE readiness. A
-   failure also appears in `log` as `SELFTEST_FAILED`.
+   (`C562-XXXXXXXXXXXX`) and stores it in bank 2 pages 48/49. The fixture can
+   program a customer serial with `serial set C562-000123` (1-24 chars of
+   `[0-9A-Z_-]`, folded to uppercase, persisted immediately); read it back with
+   `serial`. `factory reset` deliberately keeps it.
+4. **Production test:** run `factory test` and require `"ok":true`.
+   `failed_mask` is a bitmask: 0x01 flash, 0x02 I2C/SHT30, 0x04 ADC, 0x08 BLE
+   readiness, 0x10 serial identity, 0x20 crash history. For a scriptable run
+   and an exported result per unit:
+
+   ```
+   python3 tools/factory_test.py --port /dev/tty.usbmodemXXXX \
+       --serial C562-000123 --out build/factory/C562-000123.json
+   ```
+
+   The script exits non-zero on failure and writes the host timestamp, port,
+   serial-write response and device result to the JSON file. See
+   [docs/release_checklist.md](docs/release_checklist.md) and
+   [docs/hil_test_plan.md](docs/hil_test_plan.md).
 5. **OTA gate:** every field update must be an `.ota` package signed with the
    production key; the bootloader rejects an invalid signature and keeps the
    running image. Keep the private key offline, or in the secret store of your

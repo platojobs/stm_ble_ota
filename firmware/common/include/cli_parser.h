@@ -18,7 +18,10 @@
  *   crash clear
  *   resource | mem
  *   device
+ *   serial | serial show
+ *   serial set <SN>
  *   selftest
+ *   factory test | factory run
  *   factory reset
  *
  * Unknown or malformed input yields CLI_UNKNOWN (the caller prints usage).
@@ -46,7 +49,10 @@ typedef enum {
     CLI_CRASH_CLEAR,
     CLI_RESOURCE,
     CLI_DEVICE,
+    CLI_SERIAL,
+    CLI_SERIAL_SET,
     CLI_SELFTEST,
+    CLI_FACTORY_TEST,
     CLI_FACTORY_RESET,
     CLI_UNKNOWN,
     CLI_TOO_LONG,

@@ -31,6 +31,14 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
   that sees no matching BEGIN for 60 s is aborted and its partial metadata is
   cleared. Packages move to OTAP format 3 with `--security-version` (default 1);
   format 1/2 packages still inspect/unpack. Metadata layout is v3 (452 bytes).
+- **Production tooling**: CLI `serial` reads the stored unit serial and
+  `serial set <sn>` normalises (uppercase, 1-24 chars of `[0-9A-Z_-]`) and
+  persists a new one. `factory test` runs a one-shot production check —
+  flash/I2C/ADC/BLE selftest, serial identity (bit 0x10) and crash history (bit
+  0x20) — and emits one JSON line. `tools/factory_test.py` programs the serial,
+  runs the check and exports a per-unit JSON record, exiting non-zero on
+  failure. Adds `docs/release_checklist.md` and `docs/hil_test_plan.md`; no HIL
+  case has been executed on hardware yet.
 
 ## [0.3.0] - 2026-11-07
 

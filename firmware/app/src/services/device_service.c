@@ -83,6 +83,21 @@ bool device_service_ready(void)
     return g_ready;
 }
 
+int device_service_set_serial(const char *serial)
+{
+    device_info_t next = g_info;
+    if (!device_info_normalize_serial(serial, next.serial)) {
+        return -1;
+    }
+    next.provisioned = true;
+    if (device_info_save(&g_store, &next) != 0) {
+        return -2;
+    }
+    g_info = next;
+    g_ready = true;
+    return 0;
+}
+
 void device_service_storage_key(uint8_t out[32])
 {
     static const char label[] = "stm-ble-ota/wifi/v2";

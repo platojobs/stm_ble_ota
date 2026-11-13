@@ -103,9 +103,18 @@ cli_command_t cli_parse(const char *line, uint32_t length)
     if (strcmp(buf, "device") == 0 || strcmp(buf, "info") == 0) {
         return CLI_DEVICE;
     }
+    if (strcmp(buf, "serial") == 0 || strcmp(buf, "serial show") == 0) {
+        return CLI_SERIAL;
+    }
+    if (strncmp(buf, "serial set ", 11u) == 0 && buf[11] != '\0') {
+        return CLI_SERIAL_SET;
+    }
     if (strcmp(buf, "selftest") == 0 || strcmp(buf, "self-test") == 0 ||
         strcmp(buf, "test") == 0) {
         return CLI_SELFTEST;
+    }
+    if (strcmp(buf, "factory test") == 0 || strcmp(buf, "factory run") == 0) {
+        return CLI_FACTORY_TEST;
     }
     if (strcmp(buf, "factory reset") == 0 || strcmp(buf, "factory") == 0) {
         return CLI_FACTORY_RESET;

@@ -7,6 +7,7 @@
 #include "sht30.h"
 #include "bsp_adc.h"
 #include "fault_service.h"
+#include "crash_service.h"
 
 #include <string.h>
 
@@ -46,4 +47,28 @@ void selftest_service_run(selftest_result_t *out)
     if (!out->all_ok) {
         fault_service_raise(ERR_CODE_SELFTEST_FAILED, out->failed_mask);
     }
+}
+
+void factory_service_run(factory_result_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+
+    selftest_service_run(&out->selftest);
+
+    const device_info_t *info = device_service_info();
+    out->serial_ok = device_service_ready() && info != NULL &&
+                     info->serial[0] != '\0';
+    out->crash_clean = crash_service_count() == 0u;
+
+    out->failed_mask = out->selftest.failed_mask;
+    if (!out->serial_ok) {
+        out->failed_mask |= FACTORY_CHECK_SERIAL_BIT;
+    }
+    if (!out->crash_clean) {
+        out->failed_mask |= FACTORY_CHECK_CRASH_BIT;
+    }
+    out->all_ok = out->failed_mask == 0u;
 }

@@ -27,7 +27,8 @@ static void usage(void)
         "{\"type\":\"cli\",\"ok\":false,"
         "\"commands\":[\"help\",\"version\",\"part\",\"wifi\",\"sensor\","
         "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"crash\","
-        "\"crash clear\",\"resource\",\"device\",\"selftest\","
+        "\"crash clear\",\"resource\",\"device\",\"serial\","
+        "\"serial set <sn>\",\"selftest\",\"factory test\","
         "\"factory reset\"]}");
 }
 
@@ -204,6 +205,122 @@ static void cmd_device(void)
     host_link_send_json(json);
 }
 
+static void cmd_serial(void)
+{
+    const device_info_t *info = device_service_info();
+    char json[200];
+    (void)snprintf(json, sizeof(json),
+                   "{\"type\":\"cli\",\"cmd\":\"serial\",\"serial\":\"%s\","
+                   "\"hardware_id\":%u,\"provisioned\":%s}",
+                   info->serial, (unsigned)info->hardware_id,
+                   info->provisioned ? "true" : "false");
+    host_link_send_json(json);
+}
+
+/* Case-insensitive whole-word match at the start of @p text. */
+static bool match_word_ci(const char *text, uint32_t length, const char *word)
+{
+    uint32_t n = (uint32_t)strlen(word);
+    if (length < n || (length > n && text[n] != ' ' && text[n] != '\t')) {
+        return false;
+    }
+    for (uint32_t i = 0; i < n; ++i) {
+        char c = text[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char)(c - 'A' + 'a');
+        }
+        if (c != word[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void cmd_serial_set(const char *line, uint32_t length)
+{
+    uint32_t i = 0u;
+    while (i < length && (line[i] == ' ' || line[i] == '\t')) {
+        ++i;
+    }
+    if (!match_word_ci(line + i, length - i, "serial")) {
+        host_link_send_json("{\"type\":\"cli\",\"cmd\":\"serial\","
+                            "\"ok\":false,\"error\":\"bad syntax\"}");
+        return;
+    }
+    i += 6u;
+    while (i < length && (line[i] == ' ' || line[i] == '\t')) {
+        ++i;
+    }
+    if (!match_word_ci(line + i, length - i, "set")) {
+        host_link_send_json("{\"type\":\"cli\",\"cmd\":\"serial\","
+                            "\"ok\":false,\"error\":\"bad syntax\"}");
+        return;
+    }
+    i += 3u;
+    while (i < length && (line[i] == ' ' || line[i] == '\t')) {
+        ++i;
+    }
+
+    char serial[DEVICE_SERIAL_MAX + 1u];
+    uint32_t len = 0u;
+    while (i < length && line[i] != ' ' && line[i] != '\t' &&
+           line[i] != '\r' && line[i] != '\n') {
+        if (len >= DEVICE_SERIAL_MAX) {
+            len = 0u;
+            break;
+        }
+        serial[len++] = line[i++];
+    }
+    serial[len] = '\0';
+
+    int rc = (len == 0u) ? -1 : device_service_set_serial(serial);
+    if (rc == 0) {
+        const device_info_t *info = device_service_info();
+        char json[220];
+        (void)snprintf(json, sizeof(json),
+                       "{\"type\":\"cli\",\"cmd\":\"serial\",\"ok\":true,"
+                       "\"serial\":\"%s\",\"hardware_id\":%u}",
+                       info->serial, (unsigned)info->hardware_id);
+        host_link_send_json(json);
+    } else {
+        host_link_send_json(rc == -2
+            ? "{\"type\":\"cli\",\"cmd\":\"serial\",\"ok\":false,"
+              "\"error\":\"flash write failed\"}"
+            : "{\"type\":\"cli\",\"cmd\":\"serial\",\"ok\":false,"
+              "\"error\":\"invalid serial\"}");
+    }
+}
+
+static void cmd_factory_test(void)
+{
+    factory_result_t result;
+    factory_service_run(&result);
+    const device_info_t *info = device_service_info();
+    uint32_t version = ota_service_running_version();
+    char json[440];
+    (void)snprintf(json, sizeof(json),
+                   "{\"type\":\"cli\",\"cmd\":\"factory\",\"action\":\"test\","
+                   "\"ok\":%s,\"serial\":\"%s\",\"hardware_id\":%u,"
+                   "\"firmware\":\"%u.%u.%u\",\"uptime_ms\":%u,"
+                   "\"flash\":%s,\"i2c\":%s,\"adc\":%s,\"ble\":%s,"
+                   "\"serial_ok\":%s,\"crash_clean\":%s,\"crash_count\":%u,"
+                   "\"failed_mask\":%u}",
+                   result.all_ok ? "true" : "false", info->serial,
+                   (unsigned)info->hardware_id,
+                   (unsigned)((version >> 16) & 0xFFu),
+                   (unsigned)((version >> 8) & 0xFFu),
+                   (unsigned)(version & 0xFFu), (unsigned)bsp_time_ms(),
+                   result.selftest.flash_ok ? "true" : "false",
+                   result.selftest.i2c_ok ? "true" : "false",
+                   result.selftest.adc_ok ? "true" : "false",
+                   result.selftest.ble_ok ? "true" : "false",
+                   result.serial_ok ? "true" : "false",
+                   result.crash_clean ? "true" : "false",
+                   (unsigned)crash_service_count(),
+                   (unsigned)result.failed_mask);
+    host_link_send_json(json);
+}
+
 static void cmd_selftest(void)
 {
     selftest_result_t result;
@@ -255,7 +372,10 @@ void cli_service_handle_line(const char *line, uint32_t length)
     case CLI_CRASH_CLEAR:   cmd_crash_clear(); break;
     case CLI_RESOURCE:      cmd_resource(); break;
     case CLI_DEVICE:        cmd_device(); break;
+    case CLI_SERIAL:        cmd_serial(); break;
+    case CLI_SERIAL_SET:    cmd_serial_set(line, length); break;
     case CLI_SELFTEST:      cmd_selftest(); break;
+    case CLI_FACTORY_TEST:  cmd_factory_test(); break;
     case CLI_FACTORY_RESET: cmd_factory_reset(); break;
     case CLI_TOO_LONG:
         host_link_send_json(
