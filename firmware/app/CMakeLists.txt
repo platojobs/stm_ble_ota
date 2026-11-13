@@ -13,6 +13,7 @@ add_executable(stm_ble_ota_app
     src/bsp/bsp_i2c.c
     src/bsp/bsp_adc.c
     src/bsp/bsp_flash.c
+    src/bsp/bsp_heap.c
     src/bsp/bsp_watchdog.c
     src/drivers/sht30.c
     src/drivers/esp32_at.c
@@ -23,6 +24,7 @@ add_executable(stm_ble_ota_app
     src/services/cli_service.c
     src/services/fault_service.c
     src/services/crash_service.c
+    src/services/resource_monitor.c
     src/services/device_service.c
     src/services/selftest_service.c
     ${CMAKE_SOURCE_DIR}/firmware/common/src/syscalls.c

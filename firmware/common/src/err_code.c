@@ -64,6 +64,8 @@ static const err_code_entry_t k_codes[] = {
     { ERR_CODE_NOT_IMPLEMENTED,          "NOT_IMPLEMENTED",          "system"  },
     { ERR_CODE_SELFTEST_FAILED,          "SELFTEST_FAILED",          "system"  },
     { ERR_CODE_CRASH_DETECTED,           "CRASH_DETECTED",           "system"  },
+    { ERR_CODE_STACK_OVERFLOW,           "STACK_OVERFLOW",           "system"  },
+    { ERR_CODE_RAM_LOW,                  "RAM_LOW",                  "system"  },
 };
 
 #define ERR_CODE_ENTRY_COUNT \

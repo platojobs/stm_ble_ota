@@ -31,6 +31,7 @@
 #include "device_service.h"
 #include "fault_service.h"
 #include "crash_service.h"
+#include "resource_monitor.h"
 #include "esp32_at.h"
 #include "mini_json.h"
 #include "config_store.h"
@@ -250,6 +251,7 @@ int main(void)
 
     esp_at_init(&g_esp, BSP_UART_ESP, on_esp_urc, NULL);
     fault_service_init();
+    resource_monitor_init();
     crash_service_init();
     device_service_init();
 
@@ -306,6 +308,7 @@ int main(void)
             g_led_last_ms = now;
             g_led_state = !g_led_state;
             bsp_led_set(g_led_state);
+            resource_monitor_poll();
         }
     }
 }

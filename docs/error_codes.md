@@ -69,6 +69,8 @@ domain block and this table is updated in the same commit.
 | `0x0704` | `ERR_CODE_NOT_IMPLEMENTED` | system | Feature reserved, not built |
 | `0x0705` | `ERR_CODE_SELFTEST_FAILED` | system | Production self-test item failed |
 | `0x0706` | `ERR_CODE_CRASH_DETECTED` | system | A crash record was recovered from retained RAM |
+| `0x0707` | `ERR_CODE_STACK_OVERFLOW` | system | Stack canary damaged at the configured limit |
+| `0x0708` | `ERR_CODE_RAM_LOW` | system | Boot RAM reservation is within the safety margin of the budget |
 
 ## Mapping from internal enums
 

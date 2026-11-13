@@ -47,6 +47,32 @@ The script writes `SHA256SUMS` next to the binaries. A release is published by
 attaching that signed `.ota`, the bootloader binary and the checksum file to the
 tag by hand.
 
+## Resource budgets
+
+`tools/build.sh` calls `tools/check_size.py` after linking; the script parses
+the GNU ld map files (`build/arm/bootloader.map`,
+`build/arm/stm_ble_ota_app.map`), sums the Flash- and RAM-resident output
+sections and fails the build when a budget is exceeded:
+
+| Image | Flash budget | RAM budget |
+| --- | --- | --- |
+| bootloader | 30 KB (limit 32 KB) | 8 KB |
+| application | 92 KB (slot is 96 KB) | 24 KB |
+
+Run it standalone after any build:
+
+```bash
+python3 tools/check_size.py --build-dir build/arm
+```
+
+The runtime side reports the same data and more through the serial `resource`
+command: stack total/used/free (painted at boot, high-water mark), canary state,
+heap total/used/peak and the RAM reservation against the 24 KB budget. The app
+reserves 4 KB of stack and 2 KB of heap (see `app.ld`). At boot the RAM
+reservation must stay at least 2 KB below the budget, otherwise
+`RAM_LOW` (0x0708) is recorded; a damaged stack canary records
+`STACK_OVERFLOW` (0x0707).
+
 ## Version injection
 
 CMake reads `git describe --tags --always --dirty` when `-DFW_VERSION` is not

@@ -16,6 +16,12 @@ Not validated on hardware; see `KNOWN_ISSUES.md`.
   ring (bank 2 pages 50–57, one page per record). Read with CLI `crash` or the
   BLE `crash` command; `crash clear` erases the ring. Recovery also raises
   `CRASH_DETECTED` (0x0706) in the RAM fault log.
+- **Resource safety**: the 4 KB MSP is painted at boot with a canary at the
+  stack limit; a bounded `_sbrk` accounts heap current/peak, and the boot RAM
+  reservation is checked against the 24 KB budget (`RAM_LOW` 0x0708,
+  `STACK_OVERFLOW` 0x0707). CLI `resource` reports stack high-water, canary,
+  heap and RAM margin. `tools/check_size.py` parses the map files and fails the
+  build when Flash/RAM budgets are exceeded.
 
 ## [0.3.0] - 2026-11-07
 

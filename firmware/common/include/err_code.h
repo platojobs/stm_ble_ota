@@ -90,6 +90,8 @@ typedef enum {
     ERR_CODE_NOT_IMPLEMENTED   = 0x0704,
     ERR_CODE_SELFTEST_FAILED   = 0x0705,
     ERR_CODE_CRASH_DETECTED    = 0x0706,
+    ERR_CODE_STACK_OVERFLOW    = 0x0707,
+    ERR_CODE_RAM_LOW           = 0x0708,
 } err_code_t;
 
 /** Translate an OTA reason code into the shared error space. */

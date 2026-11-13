@@ -16,6 +16,7 @@
  *   log
  *   crash | crash log
  *   crash clear
+ *   resource | mem
  *   device
  *   selftest
  *   factory reset
@@ -43,6 +44,7 @@ typedef enum {
     CLI_LOG,
     CLI_CRASH,
     CLI_CRASH_CLEAR,
+    CLI_RESOURCE,
     CLI_DEVICE,
     CLI_SELFTEST,
     CLI_FACTORY_RESET,

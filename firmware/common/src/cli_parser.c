@@ -96,6 +96,10 @@ cli_command_t cli_parse(const char *line, uint32_t length)
     if (strcmp(buf, "crash clear") == 0) {
         return CLI_CRASH_CLEAR;
     }
+    if (strcmp(buf, "resource") == 0 || strcmp(buf, "mem") == 0 ||
+        strcmp(buf, "memory") == 0) {
+        return CLI_RESOURCE;
+    }
     if (strcmp(buf, "device") == 0 || strcmp(buf, "info") == 0) {
         return CLI_DEVICE;
     }

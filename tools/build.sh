@@ -24,6 +24,9 @@ cmake -S "${ROOT}" -B "${BUILD_DIR}" -G "${GEN}" \
     -DFW_VERSION="${VERSION}"
 cmake --build "${BUILD_DIR}"
 
+# Flash/RAM budget gate (thresholds in tools/check_size.py and docs/toolchain.md).
+python3 "${ROOT}/tools/check_size.py" --build-dir "${BUILD_DIR}"
+
 APP_BIN="${BUILD_DIR}/stm_ble_ota_app.bin"
 BOOT_BIN="${BUILD_DIR}/stm_ble_ota_bootloader.bin"
 FILES=("${APP_BIN}" "${BOOT_BIN}" "${BUILD_DIR}/stm_ble_ota_app.hex" "${BUILD_DIR}/stm_ble_ota_bootloader.hex")

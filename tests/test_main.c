@@ -9,6 +9,7 @@ void run_v2_features_tests(void);
 void run_err_code_tests(void);
 void run_error_log_tests(void);
 void run_crash_tests(void);
+void run_stack_guard_tests(void);
 
 int g_test_failures = 0;
 int g_test_assertions = 0;
@@ -23,6 +24,7 @@ int main(void)
     run_err_code_tests();
     run_error_log_tests();
     run_crash_tests();
+    run_stack_guard_tests();
 
     printf("\n%d assertions, %d failure(s)\n", g_test_assertions, g_test_failures);
     return (g_test_failures == 0) ? 0 : 1;

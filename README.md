@@ -247,7 +247,9 @@ VERSION=0.3.0 SIGN_KEY=tools/keys/ed25519_private.pem tools/build.sh
 
 `VERSION` defaults to `git describe --tags --always --dirty`; CMake accepts
 `-DFW_VERSION=1.2.3 -DFW_BUILD_ID=42` when git metadata is unavailable. The
-script builds with `-Werror` by default (`WERROR=OFF` to opt out).
+script builds with `-Werror` by default (`WERROR=OFF` to opt out) and ends with
+the Flash/RAM budget check from `tools/check_size.py` (thresholds in
+[docs/toolchain.md](docs/toolchain.md)).
 
 Plain CMake:
 
@@ -289,9 +291,9 @@ cppcheck --enable=warning,performance,portability --error-exitcode=1 \
 ```
 
 The full local gate is: both firmware images build with zero warnings
-(`tools/build.sh`, `-Werror` on by default), the host suite passes, and
-`cppcheck` reports nothing. Everything runs on the developer machine; there is
-no hosted CI.
+(`tools/build.sh`, `-Werror` on by default), the Flash/RAM budget check passes,
+the host suite passes, and `cppcheck` reports nothing. Everything runs on the
+developer machine; there is no hosted CI.
 
 ## Flash and debug (CLI only)
 
@@ -333,6 +335,7 @@ ota abort             abort the session
 log                   recent fault ring buffer (code, name, detail)
 crash                 last 8 persistent crash records, one JSON line each
 crash clear           erase the persistent crash ring
+resource              stack high-water/canary, heap used/peak, RAM margin
 device                serial, hardware id, firmware version, factory state
 selftest              flash / I2C / ADC / BLE production self-test
 factory reset         erase config+metadata and reset (keeps device info)
@@ -353,6 +356,16 @@ The CLI `crash` command prints the whole ring, `crash clear` erases it; writing
 `crash` (or `crash clear`) to the BLE provisioning characteristic returns the
 newest record. Each boot that recovers a record also raises
 `CRASH_DETECTED` (0x0706) in the RAM fault log.
+
+### Resource safety
+
+The 4 KB stack is painted at boot and guarded by a canary at its lowest word;
+`resource` reports the deepest usage, the canary state, heap current/peak
+(bounded `_sbrk` over the 2 KB heap window) and the RAM reservation against the
+24 KB budget. A damaged canary raises `STACK_OVERFLOW` (0x0707); a boot that
+leaves less than 2 KB of budget headroom raises `RAM_LOW` (0x0708). The Flash
+and RAM budgets are enforced locally by `tools/check_size.py` (see
+[docs/toolchain.md](docs/toolchain.md)).
 
 The same commands are available from `tools/ota_host.py` (`version`,
 `part`, `sensor`, `factory reset`, ...) and the firmware answers over the

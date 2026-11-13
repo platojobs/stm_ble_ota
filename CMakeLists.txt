@@ -103,6 +103,7 @@ add_library(firmware_common STATIC
     firmware/common/src/device_info.c
     firmware/common/src/crash_dump.c
     firmware/common/src/crash_log.c
+    firmware/common/src/stack_guard.c
 )
 target_include_directories(firmware_common PUBLIC
     ${COMMON_INCLUDES}

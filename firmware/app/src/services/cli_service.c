@@ -14,6 +14,7 @@
 #include "selftest_service.h"
 #include "fault_service.h"
 #include "crash_service.h"
+#include "resource_monitor.h"
 #include "bsp_time.h"
 #include "stm32c562xx.h"
 
@@ -26,7 +27,8 @@ static void usage(void)
         "{\"type\":\"cli\",\"ok\":false,"
         "\"commands\":[\"help\",\"version\",\"part\",\"wifi\",\"sensor\","
         "\"ota start\",\"ota status\",\"ota abort\",\"log\",\"crash\","
-        "\"crash clear\",\"device\",\"selftest\",\"factory reset\"]}");
+        "\"crash clear\",\"resource\",\"device\",\"selftest\","
+        "\"factory reset\"]}");
 }
 
 static void cmd_help(void)
@@ -174,6 +176,17 @@ static void cmd_crash_clear(void)
                              "\"action\":\"clear\",\"ok\":false}");
 }
 
+static void cmd_resource(void)
+{
+    char json[360];
+    if (resource_monitor_json(json, sizeof(json)) == 0u) {
+        host_link_send_json(
+            "{\"type\":\"cli\",\"ok\":false,\"error\":\"resource unavailable\"}");
+        return;
+    }
+    host_link_send_json(json);
+}
+
 static void cmd_device(void)
 {
     const device_info_t *info = device_service_info();
@@ -240,6 +253,7 @@ void cli_service_handle_line(const char *line, uint32_t length)
     case CLI_LOG:           cmd_log(); break;
     case CLI_CRASH:         cmd_crash(); break;
     case CLI_CRASH_CLEAR:   cmd_crash_clear(); break;
+    case CLI_RESOURCE:      cmd_resource(); break;
     case CLI_DEVICE:        cmd_device(); break;
     case CLI_SELFTEST:      cmd_selftest(); break;
     case CLI_FACTORY_RESET: cmd_factory_reset(); break;
